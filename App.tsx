@@ -100,6 +100,7 @@ export type RootStackParamList = {
     clipId?: string;
     language?: string;
   } | undefined;
+  Rewards: undefined;
   
   // Chat routes
   ChatDetail: {
@@ -284,6 +285,22 @@ const CreateModal = () => {
               <Text style={styles.createOptionDescription}>Join language learning games</Text>
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.createOption}
+            onPress={() => {
+              setShowCreateModal(false);
+              navigation.navigate('Rewards');
+            }}
+          >
+            <View style={[styles.createOptionIcon, styles.blueIcon]}>
+              <Ionicons name="trophy" size={24} color="#3B82F6" />
+            </View>
+            <View style={styles.createOptionContent}>
+              <Text style={styles.createOptionTitle}>View Rewards</Text>
+              <Text style={styles.createOptionDescription}>Check leaderboard and rewards</Text>
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -465,6 +482,15 @@ export default function App() {
         <Stack.Screen 
           name="Settings" 
           component={SettingsScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+
+        {/* Rewards Screen */}
+        <Stack.Screen 
+          name="Rewards" 
+          component={RewardsScreen}
           options={{
             animation: 'slide_from_right',
           }}

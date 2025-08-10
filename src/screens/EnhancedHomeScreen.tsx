@@ -40,6 +40,10 @@ interface Post {
     videoThumbnail?: string;
     storyTitle?: string;
     duration?: string;
+    availableTranslations?: {
+      languages: string[];
+      type: 'audio' | 'video';
+    };
   };
   engagement: {
     likes: number;
@@ -87,6 +91,10 @@ const mockPosts: Post[] = [
       phrase: 'E kààrọ́',
       translation: 'Good Morning in Yoruba',
       audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70],
+      availableTranslations: {
+        languages: ['English', 'Hausa', 'Igbo'],
+        type: 'audio'
+      }
     },
     engagement: {
       likes: 342,
@@ -121,6 +129,10 @@ const mockPosts: Post[] = [
       translation: 'Hello everyone',
       videoThumbnail: '🎥',
       duration: '0:15',
+      availableTranslations: {
+        languages: ['English', 'Yoruba', 'Hausa'],
+        type: 'video'
+      }
     },
     engagement: {
       likes: 189,
@@ -178,6 +190,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [showMoreOptions, setShowMoreOptions] = useState<string | null>(null);
+  const [showTranslationModal, setShowTranslationModal] = useState<string | null>(null);
   const [posts, setPosts] = useState(mockPosts);
 
   const handleLike = (postId: string) => {
@@ -252,6 +265,44 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           }
         : post
     ));
+  };
+
+  const handleTranslate = (postId: string, language: string) => {
+    const post = posts.find(p => p.id === postId);
+    Alert.alert(
+      'Translation Requested',
+      `This ${post?.type} will be translated to ${language}`
+    );
+    
+    // Simulate translation loading
+    setTimeout(() => {
+      Alert.alert(
+        'Translation Ready',
+        `The ${post?.type} is now available in ${language}. Would you like to watch/listen now?`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          },
+          {
+            text: 'Open',
+            onPress: () => {
+              if (post?.type === 'video') {
+                navigation.navigate('RecordVideo', { 
+                  mode: 'play',
+                  translatedLanguage: language 
+                });
+              } else {
+                navigation.navigate('RecordVoice', { 
+                  mode: 'play',
+                  translatedLanguage: language 
+                });
+              }
+            }
+          }
+        ]
+      );
+    }, 2000);
   };
 
   const CreatePostModal = () => (
@@ -556,6 +607,75 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     </Modal>
   );
 
+  const TranslationOptionsModal = ({ post, onClose }: { post: Post, onClose: () => void }) => {
+    const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
+
+    return (
+      <Modal
+        visible={true}
+        transparent
+        animationType="fade"
+        onRequestClose={onClose}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackground}
+            onPress={onClose}
+          />
+          <View style={styles.translationModalContent}>
+            <Text style={styles.translationModalTitle}>
+              {post.content.availableTranslations?.type === 'video' 
+                ? 'Watch in Your Language' 
+                : 'Listen in Your Language'}
+            </Text>
+            
+            <Text style={styles.translationDescription}>
+              This {post.type} is available in these languages:
+            </Text>
+            
+            {post.content.availableTranslations?.languages.map(language => (
+              <TouchableOpacity 
+                key={language}
+                style={[
+                  styles.translationOption,
+                  selectedLanguage === language && styles.selectedTranslationOption
+                ]}
+                onPress={() => setSelectedLanguage(language)}
+              >
+                <Ionicons 
+                  name={selectedLanguage === language ? "radio-button-on" : "radio-button-off"} 
+                  size={20} 
+                  color={selectedLanguage === language ? "#FF8A00" : "#6B7280"} 
+                />
+                <Text style={styles.translationOptionText}>{language}</Text>
+              </TouchableOpacity>
+            ))}
+            
+            <TouchableOpacity 
+              style={[
+                styles.translateButton,
+                !selectedLanguage && styles.disabledButton
+              ]}
+              disabled={!selectedLanguage}
+              onPress={() => {
+                if (selectedLanguage) {
+                  handleTranslate(post.id, selectedLanguage);
+                  onClose();
+                }
+              }}
+            >
+              <Text style={styles.translateButtonText}>
+                {post.content.availableTranslations?.type === 'video' 
+                  ? `Watch in ${selectedLanguage}` 
+                  : `Listen in ${selectedLanguage}`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   const renderWaveform = (waveform: number[]) => (
     <View style={styles.waveformContainer}>
       {waveform.map((height, index) => (
@@ -716,6 +836,22 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
+        {post.content.availableTranslations && (
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => setShowTranslationModal(post.id)}
+          >
+            <Ionicons 
+              name={post.content.availableTranslations.type === 'video' ? "language" : "language-outline"} 
+              size={20} 
+              color="#3B82F6" 
+            />
+            <Text style={[styles.actionText, { color: '#3B82F6' }]}>
+              Translate
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity 
           style={styles.actionButton}
           onPress={() => setShowShareModal(post.id)}
@@ -726,6 +862,12 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
       <MoreOptionsModal post={post} />
       <ShareModal postId={post.id} />
+      {showTranslationModal === post.id && (
+        <TranslationOptionsModal 
+          post={post} 
+          onClose={() => setShowTranslationModal(null)} 
+        />
+      )}
     </View>
   );
 
@@ -1349,6 +1491,65 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     borderRadius: 8,
     marginVertical: 2,
+  },
+  // Translation Modal Styles
+  translationModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    maxHeight: height * 0.7,
+  },
+  translationModalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  translationDescription: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  translationOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  selectedTranslationOption: {
+    backgroundColor: '#FEF3E2',
+    borderWidth: 2,
+    borderColor: '#FF8A00',
+  },
+  translationOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginLeft: 12,
+  },
+  translateButton: {
+    backgroundColor: '#FF8A00',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  disabledButton: {
+    backgroundColor: '#E5E7EB',
+    opacity: 0.5,
+  },
+  translateButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
 

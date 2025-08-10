@@ -356,174 +356,192 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Profile Info */}
-        <View style={styles.profileInfo}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Image source={{ uri: mockUser.avatar }} style={styles.avatarImage} />
-              <View style={[
-                styles.onlineIndicator,
-                { backgroundColor: mockUser.isOnline ? '#10B981' : '#9CA3AF' }
-              ]} />
+      <ScrollView 
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[1]} // Make tabs sticky
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>Profile</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+              <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Profile Info */}
+          <View style={styles.profileInfo}>
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatar}>
+                <Image source={{ uri: mockUser.avatar }} style={styles.avatarImage} />
+                <View style={[
+                  styles.onlineIndicator,
+                  { backgroundColor: mockUser.isOnline ? '#10B981' : '#9CA3AF' }
+                ]} />
+              </View>
+            </View>
+            
+            <View style={styles.profileNameContainer}>
+              <Text style={styles.profileName}>{mockUser.name}</Text>
+              {mockUser.isVerified && (
+                <Ionicons name="checkmark-circle" size={20} color="#3B82F6" style={styles.verifiedIcon} />
+              )}
+            </View>
+            
+            <Text style={styles.profileUsername}>@{mockUser.username}</Text>
+            
+            {mockUser.bio && (
+              <Text style={styles.profileBio}>{mockUser.bio}</Text>
+            )}
+            
+            <View style={styles.profileDetails}>
+              {mockUser.location && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="location-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.detailText}>{mockUser.location}</Text>
+                </View>
+              )}
+              {mockUser.joinedDate && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="calendar-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.detailText}>{mockUser.joinedDate}</Text>
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.languageTag}>
+              <Text style={styles.languageText}>{mockUser.language}</Text>
+            </View>
+
+            {/* Follow Stats */}
+            <View style={styles.followStatsContainer}>
+              <TouchableOpacity 
+                style={styles.followStatItem}
+                onPress={() => setShowFollowersModal(true)}
+              >
+                <Text style={styles.followStatNumber}>{mockFollowers.length}</Text>
+                <Text style={styles.followStatLabel}>Followers</Text>
+                {mutualFollowsCount > 0 && (
+                  <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.followStatItem}
+                onPress={() => setShowFollowingModal(true)}
+              >
+                <Text style={styles.followStatNumber}>{mockFollowing.length}</Text>
+                <Text style={styles.followStatLabel}>Following</Text>
+              </TouchableOpacity>
             </View>
           </View>
           
-          <View style={styles.profileNameContainer}>
-            <Text style={styles.profileName}>{mockUser.name}</Text>
-            {mockUser.isVerified && (
-              <Ionicons name="checkmark-circle" size={20} color="#3B82F6" style={styles.verifiedIcon} />
-            )}
+          {/* Stats */}
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>23</Text>
+              <Text style={styles.statLabel}>Validations</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{mockVoiceClips.length}</Text>
+              <Text style={styles.statLabel}>Clips</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>0</Text>
+              <Text style={styles.statLabel}>Stories</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>5</Text>
+              <Text style={styles.statLabel}>Duets</Text>
+            </View>
           </View>
-          
-          <Text style={styles.profileUsername}>@{mockUser.username}</Text>
-          
-          {mockUser.bio && (
-            <Text style={styles.profileBio}>{mockUser.bio}</Text>
-          )}
-          
-          <View style={styles.profileDetails}>
-            {mockUser.location && (
-              <View style={styles.detailItem}>
-                <Ionicons name="location-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.detailText}>{mockUser.location}</Text>
-              </View>
-            )}
-            {mockUser.joinedDate && (
-              <View style={styles.detailItem}>
-                <Ionicons name="calendar-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.detailText}>{mockUser.joinedDate}</Text>
-              </View>
-            )}
-          </View>
-          
-          <View style={styles.languageTag}>
-            <Text style={styles.languageText}>{mockUser.language}</Text>
-          </View>
+        </View>
 
-          {/* Follow Stats */}
-          <View style={styles.followStatsContainer}>
-            <TouchableOpacity 
-              style={styles.followStatItem}
-              onPress={() => setShowFollowersModal(true)}
+        {/* Tab Navigation */}
+        <View style={styles.tabContainer}>
+          {['Clips', 'Badges', 'Rewards'].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[
+                styles.tab,
+                activeTab === tab && styles.activeTab
+              ]}
+              onPress={() => {
+                setActiveTab(tab as typeof activeTab);
+                if (tab === 'Rewards') {
+                  navigation.navigate('Rewards');
+                }
+              }}
             >
-              <Text style={styles.followStatNumber}>{mockFollowers.length}</Text>
-              <Text style={styles.followStatLabel}>Followers</Text>
-              {mutualFollowsCount > 0 && (
-                <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
+              <Text style={[
+                styles.tabText,
+                activeTab === tab && styles.activeTabText
+              ]}>
+                {tab}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Content */}
+        <View style={styles.content}>
+          {activeTab === 'Clips' && (
+            <View style={styles.clipsSection}>
+              {mockVoiceClips.length > 0 ? (
+                mockVoiceClips.map(renderVoiceClip)
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
+                  <Text style={styles.emptyStateTitle}>No clips yet</Text>
+                  <Text style={styles.emptyStateDescription}>
+                    Start recording to share your voice with the world
+                  </Text>
+                  <TouchableOpacity 
+                    style={styles.recordButton}
+                    onPress={() => navigation.navigate('RecordVoice')}
+                  >
+                    <Ionicons name="mic" size={20} color="#FFFFFF" />
+                    <Text style={styles.recordButtonText}>Record Now</Text>
+                  </TouchableOpacity>
+                </View>
               )}
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.followStatItem}
-              onPress={() => setShowFollowingModal(true)}
-            >
-              <Text style={styles.followStatNumber}>{mockFollowing.length}</Text>
-              <Text style={styles.followStatLabel}>Following</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        {/* Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>23</Text>
-            <Text style={styles.statLabel}>Validations</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{mockVoiceClips.length}</Text>
-            <Text style={styles.statLabel}>Clips</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Stories</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>5</Text>
-            <Text style={styles.statLabel}>Duets</Text>
-          </View>
-        </View>
-      </View>
+            </View>
+          )}
 
-      {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
-        {['Clips', 'Badges', 'Rewards'].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[
-              styles.tab,
-              activeTab === tab && styles.activeTab
-            ]}
-            onPress={() => setActiveTab(tab as typeof activeTab)}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === tab && styles.activeTabText
-            ]}>
-              {tab}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          {activeTab === 'Badges' && (
+            <View style={styles.badgesSection}>
+              <Text style={styles.sectionTitle}>Your Badges</Text>
+              {mockBadges
+                .filter(badge => badge.earned)
+                .map(renderBadge)}
+              
+              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Available Badges</Text>
+              {mockBadges
+                .filter(badge => !badge.earned)
+                .map(renderBadge)}
+            </View>
+          )}
 
-      {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'Clips' && (
-          <View style={styles.clipsSection}>
-            {mockVoiceClips.length > 0 ? (
-              mockVoiceClips.map(renderVoiceClip)
-            ) : (
+          {activeTab === 'Rewards' && (
+            <View style={styles.rewardsSection}>
               <View style={styles.emptyState}>
-                <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
-                <Text style={styles.emptyStateTitle}>No clips yet</Text>
+                <Ionicons name="gift-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyStateTitle}>No rewards yet</Text>
                 <Text style={styles.emptyStateDescription}>
-                  Start recording to share your voice with the world
+                  Earn points by contributing to unlock rewards
                 </Text>
                 <TouchableOpacity 
                   style={styles.recordButton}
-                  onPress={() => navigation.navigate('RecordVoice')}
+                  onPress={() => navigation.navigate('Rewards')}
                 >
-                  <Ionicons name="mic" size={20} color="#FFFFFF" />
-                  <Text style={styles.recordButtonText}>Record Now</Text>
+                  <Ionicons name="trophy" size={20} color="#FFFFFF" />
+                  <Text style={styles.recordButtonText}>View Leaderboard</Text>
                 </TouchableOpacity>
               </View>
-            )}
-          </View>
-        )}
-
-        {activeTab === 'Badges' && (
-          <View style={styles.badgesSection}>
-            <Text style={styles.sectionTitle}>Your Badges</Text>
-            {mockBadges
-              .filter(badge => badge.earned)
-              .map(renderBadge)}
-            
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Available Badges</Text>
-            {mockBadges
-              .filter(badge => !badge.earned)
-              .map(renderBadge)}
-          </View>
-        )}
-
-        {activeTab === 'Rewards' && (
-          <View style={styles.rewardsSection}>
-            <View style={styles.emptyState}>
-              <Ionicons name="gift-outline" size={64} color="#D1D5DB" />
-              <Text style={styles.emptyStateTitle}>No rewards yet</Text>
-              <Text style={styles.emptyStateDescription}>
-                Earn points by contributing to unlock rewards
-              </Text>
             </View>
-          </View>
-        )}
+          )}
+        </View>
       </ScrollView>
 
       {/* Following Modal */}
@@ -588,35 +606,38 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
+  scrollContainer: {
+    flex: 1,
+  },
   header: {
     backgroundColor: '#FF8A00',
-    paddingTop: height * 0.02,
-    paddingBottom: height * 0.03,
+    paddingTop: 10,
+    paddingBottom: 20,
     paddingHorizontal: width * 0.05,
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   headerTitle: {
-    fontSize: width * 0.06,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   profileInfo: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   avatarContainer: {
     marginBottom: 12,
     position: 'relative',
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -630,13 +651,13 @@ const styles = StyleSheet.create({
   },
   onlineIndicator: {
     position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    bottom: 8,
-    right: 8,
+    bottom: 6,
+    right: 6,
   },
   profileNameContainer: {
     flexDirection: 'row',
@@ -644,7 +665,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   profileName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
@@ -652,22 +673,22 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   profileUsername: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
     marginBottom: 8,
   },
   profileBio: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
-    marginHorizontal: 40,
-    marginBottom: 12,
-    lineHeight: 20,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    lineHeight: 18,
   },
   profileDetails: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   detailItem: {
     flexDirection: 'row',
@@ -676,7 +697,7 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.9)',
     marginLeft: 4,
   },
   languageTag: {
@@ -684,39 +705,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   languageText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#FFFFFF',
     fontWeight: '500',
   },
   followStatsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 16,
-    marginBottom: 16,
+    marginTop: 12,
     width: '100%',
   },
   followStatItem: {
     alignItems: 'center',
     marginHorizontal: 20,
     padding: 8,
-    minWidth: 100,
+    minWidth: 80,
   },
   followStatNumber: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   followStatLabel: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   mutualStatText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.6)',
-    marginTop: 4,
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 2,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -726,20 +746,20 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    padding: 10,
     alignItems: 'center',
-    marginHorizontal: 4,
+    marginHorizontal: 3,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statLabel: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   tabContainer: {
     flexDirection: 'row',
@@ -770,10 +790,12 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    minHeight: height * 0.5, // Ensure minimum height for content
   },
   clipsSection: {
     paddingHorizontal: width * 0.05,
     paddingTop: 20,
+    paddingBottom: 100, // Add bottom padding
   },
   clipCard: {
     backgroundColor: '#FFFFFF',
@@ -836,6 +858,7 @@ const styles = StyleSheet.create({
   badgesSection: {
     paddingHorizontal: width * 0.05,
     paddingTop: 20,
+    paddingBottom: 100, // Add bottom padding
   },
   sectionTitle: {
     fontSize: 18,
@@ -896,6 +919,7 @@ const styles = StyleSheet.create({
   rewardsSection: {
     paddingHorizontal: width * 0.05,
     paddingTop: 20,
+    paddingBottom: 100, // Add bottom padding
   },
   emptyState: {
     alignItems: 'center',
@@ -1041,5 +1065,4 @@ const styles = StyleSheet.create({
     color: '#4B5563',
   },
 });
-
 export default ProfileScreen;
