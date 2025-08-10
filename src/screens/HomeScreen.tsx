@@ -10,7 +10,7 @@ import {
   StatusBar,
   Dimensions,
   Modal,
-  Image,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -31,6 +31,7 @@ interface Props {
 
 interface VoiceClip {
   id: string;
+  type: 'voice';
   user: {
     name: string;
     username: string;
@@ -43,11 +44,16 @@ interface VoiceClip {
   likes: number;
   comments: number;
   shares: number;
+  validations: number;
+  needsValidation: boolean;
   timeAgo: string;
+  isValidated: boolean;
+  userLanguages: string[];
 }
 
 interface Story {
   id: string;
+  type: 'story';
   user: {
     name: string;
     username: string;
@@ -58,6 +64,7 @@ interface Story {
   thumbnail: string;
   duration: string;
   likes: number;
+  comments: number;
   shares: number;
   timeAgo: string;
   isAIStory: boolean;
@@ -65,7 +72,8 @@ interface Story {
 
 const mockVoiceClips: VoiceClip[] = [
   {
-    id: '1',
+    id: 'voice_1',
+    type: 'voice',
     user: {
       name: 'Adunni Lagos',
       username: 'Adur',
@@ -78,13 +86,39 @@ const mockVoiceClips: VoiceClip[] = [
     likes: 342,
     comments: 28,
     shares: 156,
-    timeAgo: '2h'
+    validations: 23,
+    needsValidation: false,
+    timeAgo: '2h',
+    isValidated: true,
+    userLanguages: ['Yoruba / Ekiti Dialect']
+  },
+  {
+    id: 'voice_2',
+    type: 'voice',
+    user: {
+      name: 'Chidi Okafor',
+      username: 'ChidiIgbo',
+      avatar: '👨🏾',
+      language: 'Igbo / Nsukka'
+    },
+    phrase: 'Ndewo',
+    translation: 'Hello in Igbo',
+    audioWaveform: [30, 50, 70, 40, 60, 80, 90, 70, 40, 20, 50, 60, 30, 40, 60, 50],
+    likes: 189,
+    comments: 15,
+    shares: 67,
+    validations: 8,
+    needsValidation: true,
+    timeAgo: '4h',
+    isValidated: false,
+    userLanguages: ['Igbo / Nsukka', 'Igbo / Owerri']
   }
 ];
 
 const mockStories: Story[] = [
   {
-    id: '1',
+    id: 'story_1',
+    type: 'story',
     user: {
       name: 'Aisha Mohammed',
       username: 'aisha_storyteller',
@@ -95,8 +129,27 @@ const mockStories: Story[] = [
     thumbnail: '/api/placeholder/300/200',
     duration: '3:12',
     likes: 98,
-    shares: 7,
+    comments: 7,
+    shares: 12,
     timeAgo: '1d',
+    isAIStory: true
+  },
+  {
+    id: 'story_2',
+    type: 'story',
+    user: {
+      name: 'Kemi Adebayo',
+      username: 'kemi_tales',
+      avatar: '👸🏾',
+      language: 'Yoruba'
+    },
+    title: 'How the Tortoise Got Its Shell',
+    thumbnail: '/api/placeholder/300/200',
+    duration: '4:45',
+    likes: 156,
+    comments: 23,
+    shares: 31,
+    timeAgo: '3d',
     isAIStory: true
   }
 ];
@@ -104,6 +157,9 @@ const mockStories: Story[] = [
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<'All' | 'Voice' | 'Stories' | 'Lab'>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState<string | null>(null);
+
+  const userLanguages = ['Yoruba / Ekiti Dialect', 'English'];
 
   const renderWaveform = (waveform: number[]) => (
     <View style={styles.waveformContainer}>
@@ -117,6 +173,133 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         />
       ))}
     </View>
+  );
+
+  const handleValidate = (clipId: string, isCorrect: boolean) => {
+    const validationType = isCorrect ? 'correct' : 'incorrect';
+    Alert.alert(
+      'Validation Submitted',
+      `Thank you for validating this pronunciation as ${validationType}. Your feedback helps improve the community!`
+    );
+    setShowMoreOptions(null);
+  };
+
+  const handleDuet = (clip: VoiceClip) => {
+    navigation.navigate('RecordVoice', {
+      isDuet: true,
+      originalClip: {
+        id: clip.id,
+        phrase: clip.phrase,
+        user: clip.user.name,
+        language: clip.user.language
+      }
+    });
+  };
+
+  const handleRemix = (clip: VoiceClip) => {
+    navigation.navigate('RecordVoice', {
+      isRemix: true,
+      originalClip: {
+        id: clip.id,
+        phrase: clip.phrase,
+        user: clip.user.name,
+        language: clip.user.language
+      }
+    });
+  };
+
+  const handleLike = (itemId: string, type: 'voice' | 'story') => {
+    Alert.alert('Liked!', `You liked this ${type === 'voice' ? 'voice clip' : 'story'}`);
+  };
+
+  const handleComment = (itemId: string, type: 'voice' | 'story') => {
+    Alert.alert('Comment', `Comment feature coming soon for ${type === 'voice' ? 'voice clips' : 'stories'}!`);
+  };
+
+  const handleShare = (itemId: string, type: 'voice' | 'story') => {
+    Alert.alert('Share', `Share this ${type === 'voice' ? 'voice clip' : 'story'} with friends!`);
+  };
+
+  const canValidate = (clip: VoiceClip) => {
+    return userLanguages.some(lang => clip.userLanguages.includes(lang));
+  };
+
+  const MoreOptionsModal = ({ clip }: { clip: VoiceClip }) => (
+    <Modal
+      visible={showMoreOptions === clip.id}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowMoreOptions(null)}
+    >
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalBackground}
+          onPress={() => setShowMoreOptions(null)}
+        />
+        <View style={styles.moreOptionsContent}>
+          <TouchableOpacity 
+            style={styles.optionItem}
+            onPress={() => {
+              setShowMoreOptions(null);
+              handleDuet(clip);
+            }}
+          >
+            <Ionicons name="people" size={20} color="#10B981" />
+            <Text style={styles.optionText}>Create Duet</Text>
+            <Text style={styles.optionDescription}>Respond to this clip</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.optionItem}
+            onPress={() => {
+              setShowMoreOptions(null);
+              handleRemix(clip);
+            }}
+          >
+            <Ionicons name="repeat" size={20} color="#8B5CF6" />
+            <Text style={styles.optionText}>Remix</Text>
+            <Text style={styles.optionDescription}>Your version of this phrase</Text>
+          </TouchableOpacity>
+
+          {canValidate(clip) && clip.needsValidation && (
+            <>
+              <View style={styles.optionDivider} />
+              <Text style={styles.validationHeader}>Validate Pronunciation</Text>
+              <TouchableOpacity 
+                style={[styles.optionItem, styles.validationOption]}
+                onPress={() => handleValidate(clip.id, true)}
+              >
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                <Text style={styles.optionText}>Correct</Text>
+                <Text style={styles.optionDescription}>Pronunciation is accurate</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.optionItem, styles.validationOption]}
+                onPress={() => handleValidate(clip.id, false)}
+              >
+                <Ionicons name="close-circle" size={20} color="#EF4444" />
+                <Text style={styles.optionText}>Needs Work</Text>
+                <Text style={styles.optionDescription}>Could be improved</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          <View style={styles.optionDivider} />
+          <TouchableOpacity 
+            style={styles.optionItem}
+            onPress={() => {
+              setShowMoreOptions(null);
+              Alert.alert('Report', 'Report functionality would be implemented here.');
+            }}
+          >
+            <Ionicons name="flag" size={20} color="#EF4444" />
+            <Text style={styles.optionText}>Report</Text>
+            <Text style={styles.optionDescription}>Report inappropriate content</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 
   const renderVoiceClip = (clip: VoiceClip) => (
@@ -133,7 +316,21 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
         </View>
-        <Text style={styles.timeAgo}>{clip.timeAgo}</Text>
+        <View style={styles.headerRight}>
+          {clip.needsValidation && (
+            <View style={styles.validationBadge}>
+              <Ionicons name="help-circle" size={12} color="#F59E0B" />
+              <Text style={styles.validationBadgeText}>Needs Validation</Text>
+            </View>
+          )}
+          {clip.isValidated && (
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={12} color="#10B981" />
+              <Text style={styles.verifiedBadgeText}>Verified</Text>
+            </View>
+          )}
+          <Text style={styles.timeAgo}>{clip.timeAgo}</Text>
+        </View>
       </View>
 
       <View style={styles.phraseContainer}>
@@ -148,22 +345,45 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       </TouchableOpacity>
 
       <View style={styles.voiceClipActions}>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => handleLike(clip.id, 'voice')}
+        >
           <Ionicons name="heart-outline" size={20} color="#666" />
           <Text style={styles.actionText}>{clip.likes}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => handleComment(clip.id, 'voice')}
+        >
           <Ionicons name="chatbubble-outline" size={20} color="#666" />
           <Text style={styles.actionText}>{clip.comments}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="checkmark-circle-outline" size={20} color="#10B981" />
-          <Text style={styles.actionText}>{clip.shares}</Text>
+        {canValidate(clip) && (
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons 
+              name="checkmark-circle-outline" 
+              size={20} 
+              color={clip.needsValidation ? "#F59E0B" : "#10B981"} 
+            />
+            <Text style={styles.actionText}>{clip.validations}</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => handleShare(clip.id, 'voice')}
+        >
+          <Ionicons name="share-outline" size={20} color="#666" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.moreButton}>
+        <TouchableOpacity 
+          style={styles.moreButton}
+          onPress={() => setShowMoreOptions(clip.id)}
+        >
           <Ionicons name="ellipsis-horizontal" size={20} color="#666" />
         </TouchableOpacity>
       </View>
+
+      <MoreOptionsModal clip={clip} />
     </View>
   );
 
@@ -201,20 +421,29 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.durationText}>{story.duration}</Text>
           </View>
         </View>
-        <Text style={styles.storyTitleText}>{story.title}</Text>
       </View>
 
       <View style={styles.storyActions}>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => handleLike(story.id, 'story')}
+        >
           <Ionicons name="heart-outline" size={20} color="#666" />
           <Text style={styles.actionText}>{story.likes}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="sparkles-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{story.shares}</Text>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => handleComment(story.id, 'story')}
+        >
+          <Ionicons name="chatbubble-outline" size={20} color="#666" />
+          <Text style={styles.actionText}>{story.comments}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => handleShare(story.id, 'story')}
+        >
           <Ionicons name="share-outline" size={20} color="#666" />
+          <Text style={styles.actionText}>{story.shares}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.moreButton}>
           <Ionicons name="ellipsis-horizontal" size={20} color="#666" />
@@ -231,6 +460,10 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       onRequestClose={() => setShowCreateModal(false)}
     >
       <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalBackground}
+          onPress={() => setShowCreateModal(false)}
+        />
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>What would you like to create?</Text>
           
@@ -245,8 +478,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               <Ionicons name="mic" size={24} color="#FF8A00" />
             </View>
             <View style={styles.createOptionContent}>
-              <Text style={styles.createOptionTitle}>Record Voice Clip</Text>
-              <Text style={styles.createOptionDescription}>Share a phrase in your language</Text>
+              <Text style={styles.createOptionTitle}>Share a phrase or read a prompt</Text>
+              <Text style={styles.createOptionDescription}>Record in your language</Text>
             </View>
           </TouchableOpacity>
 
@@ -261,14 +494,32 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               <Ionicons name="book" size={24} color="#8B5CF6" />
             </View>
             <View style={styles.createOptionContent}>
-              <Text style={styles.createOptionTitle}>Create AI Story</Text>
-              <Text style={styles.createOptionDescription}>Turn your voice into animated stories</Text>
+              <Text style={styles.createOptionTitle}>Turn your voice into life</Text>
+              <Text style={styles.createOptionDescription}>Create animated stories</Text>
             </View>
           </TouchableOpacity>
         </View>
       </View>
     </Modal>
   );
+
+  const getFilteredContent = () => {
+    const allContent = [...mockVoiceClips, ...mockStories];
+    
+    switch (activeTab) {
+      case 'Voice':
+        return mockVoiceClips;
+      case 'Stories':
+        return mockStories;
+      case 'All':
+      default:
+        return allContent.sort((a, b) => {
+          // Sort by time, most recent first
+          const timeOrder = ['1h', '2h', '4h', '1d', '3d'];
+          return timeOrder.indexOf(a.timeAgo) - timeOrder.indexOf(b.timeAgo);
+        });
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -311,13 +562,9 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         style={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {activeTab === 'All' || activeTab === 'Voice' ? (
-          mockVoiceClips.map(renderVoiceClip)
-        ) : null}
-        
-        {activeTab === 'All' || activeTab === 'Stories' ? (
-          mockStories.map(renderStory)
-        ) : null}
+        {getFilteredContent().map((item) => 
+          item.type === 'voice' ? renderVoiceClip(item) : renderStory(item)
+        )}
       </ScrollView>
 
       {/* Floating Create Button */}
@@ -395,7 +642,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  storyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   voiceClipHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  storyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -404,6 +668,7 @@ const styles = StyleSheet.create({
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   avatar: {
     width: 40,
@@ -437,6 +702,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#D97706',
     fontWeight: '500',
+  },
+  storyTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  storyType: {
+    fontSize: 12,
+    color: '#8B5CF6',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  validationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  validationBadgeText: {
+    fontSize: 10,
+    color: '#F59E0B',
+    fontWeight: '500',
+    marginLeft: 2,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  verifiedBadgeText: {
+    fontSize: 10,
+    color: '#10B981',
+    fontWeight: '500',
+    marginLeft: 2,
   },
   timeAgo: {
     fontSize: 12,
@@ -479,50 +787,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'center',
     marginBottom: 16,
-  },
-  voiceClipActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionText: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: '#666',
-  },
-  moreButton: {
-    padding: 4,
-  },
-  storyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  storyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  storyTypeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  storyType: {
-    fontSize: 12,
-    color: '#8B5CF6',
-    fontWeight: '500',
-    marginLeft: 4,
   },
   storyContent: {
     marginBottom: 12,
@@ -569,15 +833,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  storyTitleText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+  voiceClipActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   storyActions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: '#666',
+  },
+  moreButton: {
+    padding: 4,
   },
   createButton: {
     position: 'absolute',
@@ -599,6 +875,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+  },
+  modalBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   createModalContent: {
     backgroundColor: '#FFFFFF',
@@ -647,6 +930,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  moreOptionsContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginLeft: 12,
+    flex: 1,
+  },
+  optionDescription: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 12,
+  },
+  optionDivider: {
+    height: 1,
+    backgroundColor: '#E5E5E5',
+    marginVertical: 8,
+  },
+  validationHeader: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  validationOption: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    marginVertical: 2,
+  },
 });
 
+// Make sure to export as default
 export default HomeScreen;

@@ -12,11 +12,21 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { TabParamList } from '../../App';
 
 const { width, height } = Dimensions.get('window');
 
-type RewardsScreenNavigationProp = BottomTabNavigationProp<TabParamList, 'Rewards'>;
+// Define the tab param list for this screen specifically
+// You can either import this from App.tsx or define it locally
+type TabParamList = {
+  Home: undefined;
+  Library: undefined;
+  Create: undefined;
+  Chat: undefined;
+  Profile: undefined;
+  Rewards: undefined; // Add this if you plan to add Rewards as a tab
+};
+
+type RewardsScreenNavigationProp = BottomTabNavigationProp<TabParamList, 'Profile'>; // Use 'Profile' since that's the closest existing tab
 
 interface Props {
   navigation: RewardsScreenNavigationProp;

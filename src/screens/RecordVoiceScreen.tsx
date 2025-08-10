@@ -10,6 +10,7 @@ import {
   Dimensions,
   Alert,
   Animated,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -24,14 +25,51 @@ type RecordVoiceScreenNavigationProp = NativeStackNavigationProp<
 
 interface Props {
   navigation: RecordVoiceScreenNavigationProp;
+  route?: {
+    params?: {
+      isRemix?: boolean;
+      isDuet?: boolean;
+      originalClip?: {
+        id: string;
+        phrase: string;
+        user: string;
+        language: string;
+      };
+    };
+  };
 }
 
-const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
+interface Language {
+  id: string;
+  name: string;
+  dialect?: string;
+}
+
+const languages: Language[] = [
+  { id: 'yoruba-ekiti', name: 'Yoruba', dialect: 'Ekiti Dialect' },
+  { id: 'yoruba-lagos', name: 'Yoruba', dialect: 'Lagos Dialect' },
+  { id: 'igbo-nsukka', name: 'Igbo', dialect: 'Nsukka' },
+  { id: 'igbo-owerri', name: 'Igbo', dialect: 'Owerri' },
+  { id: 'hausa-kano', name: 'Hausa', dialect: 'Kano' },
+  { id: 'hausa-sokoto', name: 'Hausa', dialect: 'Sokoto' },
+  { id: 'fulfulde', name: 'Fulfulde' },
+  { id: 'kanuri', name: 'Kanuri' },
+  { id: 'tiv', name: 'Tiv' },
+  { id: 'edo', name: 'Edo' },
+];
+
+const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [hasRecorded, setHasRecorded] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
   const pulseAnimation = useRef(new Animated.Value(1)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const isRemix = route?.params?.isRemix || false;
+  const isDuet = route?.params?.isDuet || false;
+  const originalClip = route?.params?.originalClip;
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -40,7 +78,6 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      // Pulse animation
       animationRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnimation, {
@@ -63,7 +100,6 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
       if (animationRef.current) {
         animationRef.current.stop();
       }
-      // Reset animation value
       pulseAnimation.setValue(1);
     }
 
@@ -78,13 +114,17 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
   }, [isRecording, pulseAnimation]);
 
   const handleRecord = () => {
+    if (!selectedLanguage) {
+      Alert.alert('Select Language', 'Please select the language you\'ll be speaking in before recording.');
+      setShowLanguageModal(true);
+      return;
+    }
+
     if (isRecording) {
-      // Stop recording
       setIsRecording(false);
       setHasRecorded(true);
       Alert.alert('Recording Complete', 'Your voice clip has been recorded!');
     } else {
-      // Start recording
       if (recordingTime >= 60) {
         Alert.alert('Maximum Length', 'Recordings are limited to 60 seconds');
         return;
@@ -96,9 +136,10 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleSave = () => {
+    const clipType = isRemix ? 'remix' : isDuet ? 'duet' : 'original clip';
     Alert.alert(
       'Save Recording',
-      'Your voice clip has been saved to your library!',
+      `Your ${clipType} has been saved to your library! It will be available for validation by native speakers of ${selectedLanguage?.name}${selectedLanguage?.dialect ? ` (${selectedLanguage.dialect})` : ''}.`,
       [
         {
           text: 'OK',
@@ -133,6 +174,67 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const getScreenTitle = () => {
+    if (isRemix) return 'Create Remix';
+    if (isDuet) return 'Record Duet';
+    return 'Record Voice';
+  };
+
+  const getPromptText = () => {
+    if (isRemix && originalClip) {
+      return `Create your own version of "${originalClip.phrase}" or say it in your dialect`;
+    }
+    if (isDuet && originalClip) {
+      return `Respond to "${originalClip.phrase}" by ${originalClip.user}`;
+    }
+    return "Say 'Welcome to our home' in your language";
+  };
+
+  const LanguageModal = () => (
+    <Modal
+      visible={showLanguageModal}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => setShowLanguageModal(false)}
+    >
+      <SafeAreaView style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={() => setShowLanguageModal(false)}>
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>Select your language</Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.languageList}>
+          {languages.map((language) => (
+            <TouchableOpacity
+              key={language.id}
+              style={[
+                styles.languageItem,
+                selectedLanguage?.id === language.id && styles.selectedLanguageItem
+              ]}
+              onPress={() => {
+                setSelectedLanguage(language);
+                setShowLanguageModal(false);
+              }}
+            >
+              <View style={styles.languageInfo}>
+                <Text style={styles.languageName}>{language.name}</Text>
+                {language.dialect && (
+                  <Text style={styles.dialectText}>/ {language.dialect}</Text>
+                )}
+              </View>
+              {selectedLanguage?.id === language.id && (
+                <Ionicons name="checkmark" size={20} color="#FF8A00" />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -142,24 +244,61 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Record Voice</Text>
+        <Text style={styles.headerTitle}>{getScreenTitle()}</Text>
         <View style={{ width: 24 }} />
       </View>
 
+      {/* Original Clip Reference (for Remix/Duet) */}
+      {(isRemix || isDuet) && originalClip && (
+        <View style={styles.originalClipCard}>
+          <View style={styles.originalClipHeader}>
+            <Ionicons 
+              name={isRemix ? "repeat" : "people"} 
+              size={16} 
+              color={isRemix ? "#8B5CF6" : "#10B981"} 
+            />
+            <Text style={styles.originalClipType}>
+              {isRemix ? 'Remixing' : 'Responding to'}
+            </Text>
+          </View>
+          <Text style={styles.originalClipPhrase}>"{originalClip.phrase}"</Text>
+          <Text style={styles.originalClipMeta}>
+            by {originalClip.user} • {originalClip.language}
+          </Text>
+        </View>
+      )}
+
+      {/* Language Selection */}
+      <TouchableOpacity 
+        style={styles.languageSelector}
+        onPress={() => setShowLanguageModal(true)}
+      >
+        <Ionicons name="globe-outline" size={20} color="#FF8A00" />
+        <Text style={[
+          styles.languageSelectorText,
+          selectedLanguage && styles.languageSelected
+        ]}>
+          {selectedLanguage 
+            ? `${selectedLanguage.name}${selectedLanguage.dialect ? ` / ${selectedLanguage.dialect}` : ''}`
+            : 'Select your language'
+          }
+        </Text>
+        <Ionicons name="chevron-down" size={20} color="#999" />
+      </TouchableOpacity>
+
       {/* Prompt Card */}
       <View style={styles.promptCard}>
-        <Text style={styles.promptTitle}>Today's Prompt</Text>
-        <Text style={styles.promptText}>
-          Say 'Welcome to our home' in your language
+        <Text style={styles.promptTitle}>
+          {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Today\'s Prompt'}
         </Text>
+        <Text style={styles.promptText}>{getPromptText()}</Text>
         <Text style={styles.promptSubtext}>
-          Optional - or record anything you'd like!
+          {isRemix || isDuet ? 'Express it in your own way!' : 'Optional - or record anything you\'d like!'}
         </Text>
       </View>
 
       {/* Recording Area */}
       <View style={styles.recordingArea}>
-        {/* Timer */}
         {(isRecording || hasRecorded) && (
           <View style={styles.timerContainer}>
             <Text style={styles.timerText}>{formatTime(recordingTime)}</Text>
@@ -167,7 +306,6 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
-        {/* Waveform Visualization (when recording) */}
         {isRecording && (
           <View style={styles.waveformContainer}>
             {Array.from({ length: 20 }, (_, i) => (
@@ -185,7 +323,6 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
-        {/* Record Button */}
         <View style={styles.recordButtonContainer}>
           <Animated.View
             style={[
@@ -198,7 +335,8 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity
               style={[
                 styles.recordButton,
-                isRecording && styles.recordingButton
+                isRecording && styles.recordingButton,
+                !selectedLanguage && styles.disabledButton
               ]}
               onPress={handleRecord}
             >
@@ -211,22 +349,23 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
           </Animated.View>
         </View>
 
-        {/* Recording Status */}
         <View style={styles.statusContainer}>
-          {!isRecording && !hasRecorded && (
-            <Text style={styles.statusText}>Tap to start recording</Text>
+          {!selectedLanguage && (
+            <Text style={styles.statusText}>Select a language to start recording</Text>
+          )}
+          {selectedLanguage && !isRecording && !hasRecorded && (
+            <Text style={styles.statusText}>Tap to start recording in {selectedLanguage.name}</Text>
           )}
           {isRecording && (
-            <Text style={styles.statusText}>Recording...</Text>
+            <Text style={styles.statusText}>Recording in {selectedLanguage?.name}...</Text>
           )}
           {!isRecording && hasRecorded && (
-            <Text style={styles.statusText}>Tap to record again</Text>
+            <Text style={styles.statusText}>Recording complete! Ready to save.</Text>
           )}
           <Text style={styles.maxTimeSubtext}>Max 60 seconds</Text>
         </View>
       </View>
 
-      {/* Action Buttons */}
       {hasRecorded && (
         <View style={styles.actionButtons}>
           <TouchableOpacity style={styles.discardButton} onPress={handleDiscard}>
@@ -236,20 +375,41 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation }) => {
           
           <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
             <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-            <Text style={styles.saveButtonText}>Save Clip</Text>
+            <Text style={styles.saveButtonText}>
+              Save {isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Recording Tips */}
-      {!isRecording && !hasRecorded && (
+      {!isRecording && !hasRecorded && selectedLanguage && (
         <View style={styles.tipsContainer}>
-          <Text style={styles.tipsTitle}>Recording Tips:</Text>
-          <Text style={styles.tipText}>• Speak clearly and naturally</Text>
-          <Text style={styles.tipText}>• Hold phone close to your mouth</Text>
-          <Text style={styles.tipText}>• Record in a quiet environment</Text>
+          <Text style={styles.tipsTitle}>
+            {isRemix ? 'Remix Tips:' : isDuet ? 'Duet Tips:' : 'Recording Tips:'}
+          </Text>
+          {isRemix ? (
+            <>
+              <Text style={styles.tipText}>• Put your own spin on the phrase</Text>
+              <Text style={styles.tipText}>• Use your regional dialect</Text>
+              <Text style={styles.tipText}>• Add cultural context or meaning</Text>
+            </>
+          ) : isDuet ? (
+            <>
+              <Text style={styles.tipText}>• Respond naturally to the original</Text>
+              <Text style={styles.tipText}>• Share your perspective or translation</Text>
+              <Text style={styles.tipText}>• Build on the conversation</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.tipText}>• Speak clearly and naturally</Text>
+              <Text style={styles.tipText}>• Hold phone close to your mouth</Text>
+              <Text style={styles.tipText}>• Record in a quiet environment</Text>
+            </>
+          )}
         </View>
       )}
+
+      <LanguageModal />
     </SafeAreaView>
   );
 };
@@ -274,6 +434,57 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
   },
+  originalClipCard: {
+    backgroundColor: '#F0F9FF',
+    margin: width * 0.05,
+    padding: 16,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#0EA5E9',
+  },
+  originalClipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  originalClipType: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0369A1',
+    marginLeft: 4,
+    textTransform: 'uppercase',
+  },
+  originalClipPhrase: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  originalClipMeta: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  languageSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: width * 0.05,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  languageSelectorText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#9CA3AF',
+    marginLeft: 12,
+  },
+  languageSelected: {
+    color: '#1F2937',
+    fontWeight: '500',
+  },
   promptCard: {
     backgroundColor: '#FEF3E2',
     margin: width * 0.05,
@@ -290,6 +501,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#92400E',
     marginBottom: 4,
+    lineHeight: 22,
   },
   promptSubtext: {
     fontSize: 14,
@@ -352,6 +564,9 @@ const styles = StyleSheet.create({
   recordingButton: {
     backgroundColor: '#EF4444',
   },
+  disabledButton: {
+    backgroundColor: '#D1D5DB',
+  },
   statusContainer: {
     alignItems: 'center',
   },
@@ -360,6 +575,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#6B7280',
     marginBottom: 4,
+    textAlign: 'center',
   },
   maxTimeSubtext: {
     fontSize: 14,
@@ -419,6 +635,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 4,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  languageList: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  languageItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  selectedLanguageItem: {
+    backgroundColor: '#FEF3E2',
+  },
+  languageInfo: {
+    flex: 1,
+  },
+  languageName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  dialectText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
   },
 });
 
