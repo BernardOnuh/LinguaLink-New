@@ -4,11 +4,11 @@
     "slug": "LinguaLinkNewts",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/lingualink-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/lingualink-splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#FF8A00"
     },
@@ -17,15 +17,15 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bernard.o.LinguaLinkNewts"
+      "bundleIdentifier": "com.bernard.o.LinguaLink"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/lingualink-adaptive-icon.png",
         "backgroundColor": "#FF8A00"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.bernard.o.LinguaLinkNewts",
+      "package": "com.bernard.o.LinguaLink",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
@@ -34,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/lingualink-favicon.png"
     },
     "plugins": [
       [
