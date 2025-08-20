@@ -49,7 +49,8 @@
         {
           "cameraPermission": "Allow LinguaLink to access your camera for video recording."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

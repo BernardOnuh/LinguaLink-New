@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import * as AuthSession from 'expo-auth-session';
 import { supabase } from '../supabaseClient';
 
 type AuthContextValue = {
@@ -7,6 +8,7 @@ type AuthContextValue = {
   user: import('@supabase/supabase-js').User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<null | string>;
+  signInWithGoogle: () => Promise<null | string>;
   signUp: (
     params: {
       email: string;
@@ -48,6 +50,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       return error ? error.message : null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle: AuthContextValue['signInWithGoogle'] = async () => {
+    setLoading(true);
+    try {
+      const redirectUri = AuthSession.makeRedirectUri({ scheme: 'lingualink' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUri,
+          skipBrowserRedirect: false,
+        },
+      });
+      return error ? error.message : null;
+    } catch (e: any) {
+      return e?.message || 'Google sign-in failed';
     } finally {
       setLoading(false);
     }
@@ -95,7 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, user, loading, signIn, signUp, signOut }),
+    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, signOut }),
     [session, user, loading]
   );
 
