@@ -60,10 +60,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             await signOut();
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Welcome' }],
-            });
+            // AuthGate will switch to the Auth stack automatically after sign out
           }
         }
       ]

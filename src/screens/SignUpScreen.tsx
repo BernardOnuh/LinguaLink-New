@@ -84,9 +84,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Sign Up Failed', err);
       return;
     }
-    Alert.alert('Success', 'Account created successfully!', [
-      { text: 'OK', onPress: () => navigation.navigate('MainTabs') }
-    ]);
+    Alert.alert('Success', 'Account created successfully!');
   };
 
   const handleLanguageSelect = (language: Language) => {

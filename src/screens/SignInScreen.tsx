@@ -55,7 +55,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Sign In Failed', err);
       return;
     }
-    navigation.navigate('MainTabs');
+    // AuthGate will switch stacks to MainTabs when session exists.
   };
 
   const handleDemoAccess = () => {
@@ -72,13 +72,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
           onPress: () => {
             Alert.alert(
               'Demo Login Success',
-              'Welcome to LinguaLink Demo!',
-              [
-                {
-                  text: 'Continue',
-                  onPress: () => navigation.navigate('MainTabs')
-                }
-              ]
+              'Welcome to LinguaLink Demo!'
             );
           }
         },
