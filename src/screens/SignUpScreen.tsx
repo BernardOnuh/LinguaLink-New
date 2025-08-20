@@ -84,7 +84,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Sign Up Failed', err);
       return;
     }
-    Alert.alert('Success', 'Account created successfully!');
+    Alert.alert('Success', 'Please check your email to verify your account.');
+    navigation.navigate('VerifyEmail', { email: user.email });
   };
 
   const handleLanguageSelect = (language: Language) => {

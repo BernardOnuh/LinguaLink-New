@@ -74,6 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             username,
             primary_language: primaryLanguage,
           },
+          emailRedirectTo: 'lingualink://auth-callback',
         },
       });
       if (error) return error.message;
