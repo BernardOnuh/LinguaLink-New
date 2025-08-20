@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/lingualink-splash.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FF8A00"
     },
@@ -34,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/lingualink-favicon.png"
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [
