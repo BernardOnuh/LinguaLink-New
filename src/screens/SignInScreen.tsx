@@ -38,6 +38,13 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
   });
   const [showPassword, setShowPassword] = useState(false);
 
+  const handleGoogleSignIn = async () => {
+    const error = await signInWithGoogle();
+    if (error) {
+      Alert.alert('Google Sign-In Failed', error);
+    }
+  };
+
   const handleSignIn = async () => {
     if (!credentials.email || !credentials.password) {
       Alert.alert('Error', 'Please enter your email and password');
@@ -164,7 +171,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
 
           {/* Google Sign In */}
-          <TouchableOpacity style={styles.googleButton} onPress={signInWithGoogle} disabled={loading}>
+          <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn} disabled={loading}>
             <Ionicons name="logo-google" size={18} color="#EA4335" style={{ marginRight: 8 }} />
             <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>

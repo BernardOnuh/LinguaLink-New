@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../supabaseClient';
 
 type AuthContextValue = {
@@ -35,8 +36,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     init();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      console.log('Auth state changed:', event, newSession?.user?.email);
       setSession(newSession);
+
+      // Handle OAuth sign-in success
+      if (event === 'SIGNED_IN' && newSession?.user) {
+        await handleOAuthSignIn(newSession.user);
+      }
     });
     return () => {
       sub.subscription.unsubscribe();
@@ -58,19 +65,137 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithGoogle: AuthContextValue['signInWithGoogle'] = async () => {
     setLoading(true);
     try {
-      const redirectUri = AuthSession.makeRedirectUri({ scheme: 'lingualink' });
+      // Create redirect URI for OAuth - handle development vs production
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'lingualink',
+        path: 'auth-callback',
+      });
+
+      console.log('Google OAuth redirect URI:', redirectUri);
+
+      // Start OAuth flow
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUri,
-          skipBrowserRedirect: false,
+          skipBrowserRedirect: true, // We'll handle the redirect manually
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
-      return error ? error.message : null;
+
+      if (error) {
+        console.error('Google OAuth error:', error);
+        return `OAuth Error: ${error.message}`;
+      }
+
+      if (!data.url) {
+        console.error('No OAuth URL received');
+        return 'Failed to get OAuth URL from Supabase';
+      }
+
+      console.log('Opening OAuth URL:', data.url);
+
+      // Open the OAuth URL in browser
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectUri,
+        {
+          showInRecents: true,
+          preferEphemeralSession: true,
+        }
+      );
+
+      console.log('OAuth result:', result);
+
+      if (result.type === 'success' && result.url) {
+        console.log('OAuth success, URL:', result.url);
+
+        // Parse the URL to extract the session
+        try {
+          const url = new URL(result.url);
+          const code = url.searchParams.get('code');
+          const error = url.searchParams.get('error');
+
+          if (error) {
+            console.error('OAuth error in URL:', error);
+            return `OAuth Error: ${error}`;
+          }
+
+          if (code) {
+            console.log('Exchanging code for session...');
+            const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+
+            if (exchangeError) {
+              console.error('Code exchange error:', exchangeError);
+              return `Session Error: ${exchangeError.message}`;
+            }
+
+            console.log('Session retrieved successfully');
+            return null; // Success
+          } else {
+            console.error('No code found in redirect URL');
+            return 'No authentication code received';
+          }
+        } catch (urlError) {
+          console.error('Error parsing redirect URL:', urlError);
+          return 'Error processing OAuth redirect';
+        }
+      } else if (result.type === 'cancel') {
+        console.log('OAuth cancelled by user');
+        return 'Google sign-in was cancelled';
+      } else {
+        console.log('OAuth failed:', result);
+        return `OAuth failed: ${result.type}`;
+      }
     } catch (e: any) {
-      return e?.message || 'Google sign-in failed';
+      console.error('Google sign-in exception:', e);
+      return `Exception: ${e?.message || 'Unknown error occurred'}`;
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOAuthSignIn = async (user: import('@supabase/supabase-js').User) => {
+    try {
+      // Check if user profile exists
+      const { data: existingProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error checking profile:', profileError);
+        return;
+      }
+
+      // If profile doesn't exist, create one
+      if (!existingProfile) {
+        const userMetadata = user.user_metadata;
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            full_name: userMetadata?.full_name || userMetadata?.name || '',
+            username: userMetadata?.username || userMetadata?.email?.split('@')[0] || '',
+            avatar_url: userMetadata?.avatar_url || '',
+            primary_language: userMetadata?.primary_language || 'English',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+
+        if (insertError) {
+          console.error('Error creating profile:', insertError);
+        } else {
+          console.log('Profile created for OAuth user');
+        }
+      }
+    } catch (error) {
+      console.error('Error in handleOAuthSignIn:', error);
     }
   };
 
