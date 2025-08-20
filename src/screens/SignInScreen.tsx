@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,13 +31,14 @@ interface Props {
 }
 
 const SignInScreen: React.FC<Props> = ({ navigation }) => {
+  const { signIn, loading } = useAuth();
   const [credentials, setCredentials] = useState({
     email: '',
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSignIn = () => {
+  const handleSignIn = async () => {
     if (!credentials.email || !credentials.password) {
       Alert.alert('Error', 'Please enter your email and password');
       return;
@@ -48,16 +50,12 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
-    Alert.alert(
-      'Success', 
-      'Signed in successfully!',
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('MainTabs')
-        }
-      ]
-    );
+    const err = await signIn(credentials.email, credentials.password);
+    if (err) {
+      Alert.alert('Sign In Failed', err);
+      return;
+    }
+    navigation.navigate('MainTabs');
   };
 
   const handleDemoAccess = () => {
@@ -66,7 +64,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
       password: 'demo123',
     });
     Alert.alert(
-      'Demo Access', 
+      'Demo Access',
       'Demo credentials filled in! Tap Sign In to continue.',
       [
         {
@@ -102,7 +100,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
@@ -115,8 +113,8 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
         </View>
         <Text style={styles.formSubtitle}>Continue preserving languages together</Text>
 
-        <ScrollView 
-          style={styles.formContent} 
+        <ScrollView
+          style={styles.formContent}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -152,10 +150,10 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
                 onChangeText={(text) => setCredentials({ ...credentials, password: text })}
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons 
-                  name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showPassword ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>
@@ -167,8 +165,8 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
 
           {/* Sign In Button */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleSignIn}>
-            <Text style={styles.primaryButtonText}>Sign In</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSignIn} disabled={loading}>
+            <Text style={styles.primaryButtonText}>{loading ? 'Signing in...' : 'Sign In'}</Text>
           </TouchableOpacity>
 
           {/* Sign Up Link */}
