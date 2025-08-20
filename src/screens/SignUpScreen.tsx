@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import LanguagePicker from '../components/LanguagePicker';
+import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
@@ -45,6 +46,7 @@ interface Language {
 }
 
 const SignUpScreen: React.FC<Props> = ({ navigation }) => {
+  const { signUp, loading } = useAuth();
   const [user, setUser] = useState<User>({
     fullName: '',
     username: '',
@@ -56,27 +58,35 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>();
 
-  const handleSignUp = () => {
-    if (!user.fullName || !user.username || !user.email || !user.password) {
+  const handleSignUp = async () => {
+    if (!user.fullName || !user.username || !user.email || !user.password || !user.primaryLanguage) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
-    
     if (user.password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(user.email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
 
-    Alert.alert(
-      'Success', 
-      'Account created successfully!',
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('MainTabs')
-        }
-      ]
-    );
+    const err = await signUp({
+      email: user.email,
+      password: user.password,
+      fullName: user.fullName,
+      username: user.username,
+      primaryLanguage: user.primaryLanguage,
+    });
+    if (err) {
+      Alert.alert('Sign Up Failed', err);
+      return;
+    }
+    Alert.alert('Success', 'Account created successfully!', [
+      { text: 'OK', onPress: () => navigation.navigate('MainTabs') }
+    ]);
   };
 
   const handleLanguageSelect = (language: Language) => {
@@ -87,7 +97,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
@@ -100,8 +110,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         </View>
         <Text style={styles.formSubtitle}>Preserve languages through voice and stories</Text>
 
-        <ScrollView 
-          style={styles.formContent} 
+        <ScrollView
+          style={styles.formContent}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -169,10 +179,10 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                 onChangeText={(text) => setUser({ ...user, password: text })}
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons 
-                  name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showPassword ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>
@@ -182,7 +192,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           {/* Primary Language */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Primary Language</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.dropdownContainer}
               onPress={() => setShowLanguagePicker(true)}
             >
@@ -213,9 +223,9 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           {/* Join Button */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleSignUp}>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSignUp} disabled={loading}>
             <Ionicons name="sparkles" size={20} color="#FFFFFF" style={styles.buttonIcon} />
-            <Text style={styles.primaryButtonText}>Join LinguaLink</Text>
+            <Text style={styles.primaryButtonText}>{loading ? 'Creating...' : 'Join LinguaLink'}</Text>
           </TouchableOpacity>
 
           {/* Sign In Link */}

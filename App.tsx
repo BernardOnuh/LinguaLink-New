@@ -1,6 +1,7 @@
 // App.tsx - Updated with new navigation routes
 import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { AuthProvider } from './src/context/AuthProvider';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, TouchableOpacity, Modal, Text, StyleSheet } from 'react-native';
@@ -101,7 +102,7 @@ export type RootStackParamList = {
     language?: string;
   } | undefined;
   Rewards: undefined;
-  
+
   // Chat routes
   ChatDetail: {
     contact: Contact;
@@ -118,7 +119,7 @@ export type RootStackParamList = {
   GroupCall: {
     group: Group;
   };
-  
+
   // New feature routes
   TurnVerse: undefined;
   WordChain: undefined;
@@ -147,10 +148,10 @@ export type TabParamList = {
 };
 
 // Export navigation prop types for use in components
-export type RootStackScreenProps<T extends keyof RootStackParamList> = 
+export type RootStackScreenProps<T extends keyof RootStackParamList> =
   NativeStackScreenProps<RootStackParamList, T>;
 
-export type TabScreenProps<T extends keyof TabParamList> = 
+export type TabScreenProps<T extends keyof TabParamList> =
   BottomTabScreenProps<TabParamList, T>;
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -183,14 +184,14 @@ const CreateModal = () => {
       onRequestClose={() => setShowCreateModal(false)}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalBackground}
           onPress={() => setShowCreateModal(false)}
         />
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>What would you like to create?</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -206,7 +207,7 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -222,7 +223,7 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -238,7 +239,7 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -254,7 +255,7 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -270,7 +271,7 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -286,7 +287,7 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -365,33 +366,33 @@ const MainTabs = () => {
           },
         })}
       >
-        <Tab.Screen 
-          name="Home" 
+        <Tab.Screen
+          name="Home"
           component={EnhancedHomeScreen}
           options={{ tabBarLabel: 'Home' }}
         />
-        <Tab.Screen 
-          name="Library" 
+        <Tab.Screen
+          name="Library"
           component={LibraryScreen}
           options={{ tabBarLabel: 'Library' }}
         />
-        <Tab.Screen 
-          name="Create" 
+        <Tab.Screen
+          name="Create"
           component={CreateComponent}
-          options={{ 
+          options={{
             tabBarLabel: '',
           }}
         />
-        <Tab.Screen 
-          name="Chat" 
+        <Tab.Screen
+          name="Chat"
           component={ChatListScreen}
-          options={{ 
+          options={{
             tabBarLabel: 'Chat',
             tabBarBadge: 3, // Show unread messages count
           }}
         />
-        <Tab.Screen 
-          name="Profile" 
+        <Tab.Screen
+          name="Profile"
           component={ProfileScreen}
           options={{ tabBarLabel: 'Profile' }}
         />
@@ -403,7 +404,8 @@ const MainTabs = () => {
 
 export default function App() {
   return (
-    <NavigationContainer>
+    <AuthProvider>
+      <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Welcome"
         screenOptions={{
@@ -411,22 +413,22 @@ export default function App() {
         }}
       >
         {/* Authentication Screens */}
-        <Stack.Screen 
-          name="Welcome" 
+        <Stack.Screen
+          name="Welcome"
           component={WelcomeScreen}
           options={{
             gestureEnabled: false,
           }}
         />
-        <Stack.Screen 
-          name="SignUp" 
+        <Stack.Screen
+          name="SignUp"
           component={SignUpScreen}
           options={{
             animation: 'slide_from_right',
           }}
         />
-        <Stack.Screen 
-          name="SignIn" 
+        <Stack.Screen
+          name="SignIn"
           component={SignInScreen}
           options={{
             animation: 'slide_from_right',
@@ -434,8 +436,8 @@ export default function App() {
         />
 
         {/* Main App */}
-        <Stack.Screen 
-          name="MainTabs" 
+        <Stack.Screen
+          name="MainTabs"
           component={MainTabs}
           options={{
             gestureEnabled: false,
@@ -444,24 +446,24 @@ export default function App() {
         />
 
         {/* Content Creation Screens */}
-        <Stack.Screen 
-          name="RecordVoice" 
+        <Stack.Screen
+          name="RecordVoice"
           component={RecordVoiceScreen}
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
           }}
         />
-        <Stack.Screen 
-          name="RecordVideo" 
+        <Stack.Screen
+          name="RecordVideo"
           component={RecordVoiceScreen} // You can create a separate RecordVideoScreen
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
           }}
         />
-        <Stack.Screen 
-          name="TellStory" 
+        <Stack.Screen
+          name="TellStory"
           component={TellStoryScreen}
           options={{
             animation: 'slide_from_bottom',
@@ -470,8 +472,8 @@ export default function App() {
         />
 
         {/* Validation Screen */}
-        <Stack.Screen 
-          name="Validation" 
+        <Stack.Screen
+          name="Validation"
           component={ValidationScreen}
           options={{
             animation: 'slide_from_right',
@@ -479,8 +481,8 @@ export default function App() {
         />
 
         {/* Settings Screen */}
-        <Stack.Screen 
-          name="Settings" 
+        <Stack.Screen
+          name="Settings"
           component={SettingsScreen}
           options={{
             animation: 'slide_from_right',
@@ -488,8 +490,8 @@ export default function App() {
         />
 
         {/* Rewards Screen */}
-        <Stack.Screen 
-          name="Rewards" 
+        <Stack.Screen
+          name="Rewards"
           component={RewardsScreen}
           options={{
             animation: 'slide_from_right',
@@ -497,24 +499,24 @@ export default function App() {
         />
 
         {/* Chat Screens */}
-        <Stack.Screen 
-          name="ChatDetail" 
+        <Stack.Screen
+          name="ChatDetail"
           component={ChatDetailScreen}
           options={{
             animation: 'slide_from_right',
             headerShown: true,
           }}
         />
-        <Stack.Screen 
-          name="GroupChat" 
+        <Stack.Screen
+          name="GroupChat"
           component={GroupChatScreen}
           options={{
             animation: 'slide_from_right',
             headerShown: true,
           }}
         />
-        <Stack.Screen 
-          name="VoiceCall" 
+        <Stack.Screen
+          name="VoiceCall"
           component={VoiceCallScreen}
           options={{
             animation: 'slide_from_bottom',
@@ -522,8 +524,8 @@ export default function App() {
             headerShown: false,
           }}
         />
-        <Stack.Screen 
-          name="VideoCall" 
+        <Stack.Screen
+          name="VideoCall"
           component={VideoCallScreen}
           options={{
             animation: 'slide_from_bottom',
@@ -531,8 +533,8 @@ export default function App() {
             headerShown: false,
           }}
         />
-        <Stack.Screen 
-          name="GroupCall" 
+        <Stack.Screen
+          name="GroupCall"
           component={GroupCallScreen}
           options={{
             animation: 'slide_from_bottom',
@@ -542,16 +544,16 @@ export default function App() {
         />
 
         {/* Games and Entertainment */}
-        <Stack.Screen 
-          name="TurnVerse" 
+        <Stack.Screen
+          name="TurnVerse"
           component={TurnVerseScreen}
           options={{
             animation: 'slide_from_right',
             headerShown: false,
           }}
         />
-        <Stack.Screen 
-          name="WordChain" 
+        <Stack.Screen
+          name="WordChain"
           component={TurnVerseScreen} // Can reuse or create separate WordChainScreen
           options={{
             animation: 'slide_from_right',
@@ -560,8 +562,8 @@ export default function App() {
         />
 
         {/* Live Streaming */}
-        <Stack.Screen 
-          name="StartLive" 
+        <Stack.Screen
+          name="StartLive"
           component={LiveStreamingScreen}
           options={{
             animation: 'slide_from_bottom',
@@ -569,8 +571,8 @@ export default function App() {
             headerShown: false,
           }}
         />
-        <Stack.Screen 
-          name="LiveStream" 
+        <Stack.Screen
+          name="LiveStream"
           component={LiveStreamingScreen}
           options={{
             animation: 'slide_from_bottom',
@@ -580,15 +582,15 @@ export default function App() {
         />
 
         {/* Social Features */}
-        <Stack.Screen 
-          name="ContactDiscovery" 
+        <Stack.Screen
+          name="ContactDiscovery"
           component={ContactDiscoveryScreen}
           options={{
             animation: 'slide_from_right',
           }}
         />
-        <Stack.Screen 
-          name="UserProfile" 
+        <Stack.Screen
+          name="UserProfile"
           component={ProfileScreen} // Can reuse or create separate UserProfileScreen
           options={{
             animation: 'slide_from_right',
@@ -596,16 +598,16 @@ export default function App() {
         />
 
         {/* Story Features */}
-        <Stack.Screen 
-          name="CreateStory" 
+        <Stack.Screen
+          name="CreateStory"
           component={TellStoryScreen} // Can reuse or create separate CreateStoryScreen
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
           }}
         />
-        <Stack.Screen 
-          name="StoryView" 
+        <Stack.Screen
+          name="StoryView"
           component={TellStoryScreen} // Can create separate StoryViewScreen
           options={{
             animation: 'fade',
@@ -615,8 +617,8 @@ export default function App() {
         />
 
         {/* Group Management */}
-        <Stack.Screen 
-          name="CreateGroup" 
+        <Stack.Screen
+          name="CreateGroup"
           component={ContactDiscoveryScreen} // Can create separate CreateGroupScreen
           options={{
             animation: 'slide_from_bottom',
@@ -624,7 +626,8 @@ export default function App() {
           }}
         />
       </Stack.Navigator>
-    </NavigationContainer>
+      </NavigationContainer>
+    </AuthProvider>
   );
 }
 
