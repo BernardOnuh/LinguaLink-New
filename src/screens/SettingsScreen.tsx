@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import LanguagePicker from '../components/LanguagePicker';
+import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,6 +36,7 @@ interface Language {
 }
 
 const SettingsScreen: React.FC<Props> = ({ navigation }) => {
+  const { signOut } = useAuth();
   const [notificationSettings, setNotificationSettings] = useState({
     likes: true,
     duets: true,
@@ -56,11 +58,9 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Welcome' }],
-            });
+          onPress: async () => {
+            await signOut();
+            // AuthGate will switch to the Auth stack automatically after sign out
           }
         }
       ]
@@ -111,7 +111,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>

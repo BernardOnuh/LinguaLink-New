@@ -1,10 +1,10 @@
 // App.tsx - Updated with new navigation routes
 import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { AuthProvider } from './src/context/AuthProvider';
+import { AuthProvider, useAuth } from './src/context/AuthProvider';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, TouchableOpacity, Modal, Text, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
@@ -402,16 +402,8 @@ const MainTabs = () => {
   );
 };
 
-export default function App() {
-  return (
-    <AuthProvider>
-      <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Welcome"
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
+const AuthStack = () => (
+  <Stack.Navigator initialRouteName="Welcome" screenOptions={{ headerShown: false }}>
         {/* Authentication Screens */}
         <Stack.Screen
           name="Welcome"
@@ -434,8 +426,11 @@ export default function App() {
             animation: 'slide_from_right',
           }}
         />
+  </Stack.Navigator>
+);
 
-        {/* Main App */}
+const MainStack = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen
           name="MainTabs"
           component={MainTabs}
@@ -625,7 +620,27 @@ export default function App() {
             presentation: 'modal',
           }}
         />
-      </Stack.Navigator>
+  </Stack.Navigator>
+);
+
+const AuthGate = () => {
+  const { session, loading } = useAuth();
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
+        <ActivityIndicator size="large" color="#FF8A00" />
+        <Text style={{ marginTop: 12, color: '#6B7280' }}>Loading...</Text>
+      </View>
+    );
+  }
+  return session ? <MainStack /> : <AuthStack />;
+};
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <NavigationContainer>
+        <AuthGate />
       </NavigationContainer>
     </AuthProvider>
   );
