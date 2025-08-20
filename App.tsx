@@ -33,6 +33,8 @@ import GroupCallScreen from './src/screens/GroupCallScreen';
 import TurnVerseScreen from './src/screens/TurnVerseScreen';
 import LiveStreamingScreen from './src/screens/LiveStreamingScreen';
 import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
+import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
+import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
 
 // Import navigation types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -72,6 +74,8 @@ export type RootStackParamList = {
   Welcome: undefined;
   SignUp: undefined;
   SignIn: undefined;
+  VerifyEmail: { email?: string } | undefined;
+  AuthCallback: { code?: string } | undefined;
   MainTabs: undefined;
   RecordVoice: {
     mode?: 'record' | 'upload';
@@ -424,6 +428,20 @@ const AuthStack = () => (
           component={SignInScreen}
           options={{
             animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="VerifyEmail"
+          component={VerifyEmailScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="AuthCallback"
+          component={AuthCallbackScreen}
+          options={{
+            animation: 'fade',
           }}
         />
   </Stack.Navigator>
