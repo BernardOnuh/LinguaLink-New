@@ -46,7 +46,7 @@ interface Language {
 }
 
 const SignUpScreen: React.FC<Props> = ({ navigation }) => {
-  const { signUp, loading } = useAuth();
+  const { signUp, signInWithGoogle, loading } = useAuth();
   const [user, setUser] = useState<User>({
     fullName: '',
     username: '',
@@ -221,10 +221,17 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Join Button */}
+          {/* Join Button */
+          }
           <TouchableOpacity style={styles.primaryButton} onPress={handleSignUp} disabled={loading}>
             <Ionicons name="sparkles" size={20} color="#FFFFFF" style={styles.buttonIcon} />
             <Text style={styles.primaryButtonText}>{loading ? 'Creating...' : 'Join LinguaLink'}</Text>
+          </TouchableOpacity>
+
+          {/* Google Sign Up */}
+          <TouchableOpacity style={styles.googleButton} onPress={signInWithGoogle} disabled={loading}>
+            <Ionicons name="logo-google" size={18} color="#EA4335" style={{ marginRight: 8 }} />
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
           {/* Sign In Link */}
@@ -385,6 +392,22 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#FFFFFF',
+    fontSize: width * 0.04,
+    fontWeight: '600',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingVertical: height * 0.018,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  googleButtonText: {
+    color: '#111827',
     fontSize: width * 0.04,
     fontWeight: '600',
   },

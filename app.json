@@ -18,7 +18,15 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bernard.o.LinguaLink"
+      "bundleIdentifier": "com.bernard.o.LinguaLink",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "lingualink",
+            "CFBundleURLSchemes": ["lingualink"]
+          }
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,6 +35,18 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.bernard.o.LinguaLink",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "lingualink"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
@@ -49,7 +69,8 @@
         {
           "cameraPermission": "Allow LinguaLink to access your camera for video recording."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

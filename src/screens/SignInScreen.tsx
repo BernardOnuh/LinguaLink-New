@@ -31,12 +31,19 @@ interface Props {
 }
 
 const SignInScreen: React.FC<Props> = ({ navigation }) => {
-  const { signIn, loading } = useAuth();
+  const { signIn, signInWithGoogle, loading } = useAuth();
   const [credentials, setCredentials] = useState({
     email: '',
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    const error = await signInWithGoogle();
+    if (error) {
+      Alert.alert('Google Sign-In Failed', error);
+    }
+  };
 
   const handleSignIn = async () => {
     if (!credentials.email || !credentials.password) {
@@ -163,6 +170,12 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.primaryButtonText}>{loading ? 'Signing in...' : 'Sign In'}</Text>
           </TouchableOpacity>
 
+          {/* Google Sign In */}
+          <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn} disabled={loading}>
+            <Ionicons name="logo-google" size={18} color="#EA4335" style={{ marginRight: 8 }} />
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+
           {/* Sign Up Link */}
           <View style={styles.linkContainer}>
             <Text style={styles.linkText}>Don't have an account? </Text>
@@ -271,6 +284,22 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#FFFFFF',
+    fontSize: width * 0.04,
+    fontWeight: '600',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingVertical: height * 0.018,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  googleButtonText: {
+    color: '#111827',
     fontSize: width * 0.04,
     fontWeight: '600',
   },
