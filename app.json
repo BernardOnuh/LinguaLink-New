@@ -3,6 +3,7 @@
     "name": "LinguaLink",
     "slug": "LinguaLinkNewts",
     "version": "1.0.0",
+    "scheme": "lingualink",
     "orientation": "portrait",
     "icon": "./assets/lingualink-icon.png",
     "userInterfaceStyle": "light",
