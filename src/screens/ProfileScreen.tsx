@@ -22,6 +22,15 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
+import {
+  getFollowerCounts,
+  getFollowers,
+  getFollowing,
+  followUser,
+  unfollowUser,
+  isFollowingUser
+} from '../utils/social';
+import { SocialUserProfile } from '../../types/navigation';
 
 const { width, height } = Dimensions.get('window');
 
@@ -102,8 +111,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [userProfile, setUserProfile] = useState<User | null>(null);
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>([]);
   const [badges, setBadges] = useState<Badge[]>([]);
-  const [following, setFollowing] = useState<User[]>([]);
-  const [followers, setFollowers] = useState<User[]>([]);
+  const [following, setFollowing] = useState<SocialUserProfile[]>([]);
+  const [followers, setFollowers] = useState<SocialUserProfile[]>([]);
+  const [followerCounts, setFollowerCounts] = useState({ followers_count: 0, following_count: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +124,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
 
   const [isFollowing, setIsFollowing] = useState<Record<string, boolean>>({});
+  const [followLoading, setFollowLoading] = useState<Record<string, boolean>>({});
 
   // Data fetching functions
   const fetchUserProfile = async () => {
@@ -251,8 +262,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     if (!authUser?.id) return;
 
     try {
-      // Mock following data for now - can be replaced with actual following table later
-      setFollowing([]);
+      const followingData = await getFollowing(authUser.id);
+      setFollowing(followingData);
+
+      // Update follow status for each user
+      const followStatus: Record<string, boolean> = {};
+      for (const user of followingData) {
+        followStatus[user.id] = true;
+      }
+      setIsFollowing(followStatus);
     } catch (error) {
       console.error('Error fetching following:', error);
     }
@@ -262,10 +280,23 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     if (!authUser?.id) return;
 
     try {
-      // Mock followers data for now - can be replaced with actual followers table later
-      setFollowers([]);
+      const followersData = await getFollowers(authUser.id);
+      setFollowers(followersData);
     } catch (error) {
       console.error('Error fetching followers:', error);
+    }
+  };
+
+  const fetchFollowerCounts = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      const counts = await getFollowerCounts(authUser.id);
+      if (counts) {
+        setFollowerCounts(counts);
+      }
+    } catch (error) {
+      console.error('Error fetching follower counts:', error);
     }
   };
 
@@ -281,6 +312,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       await Promise.all([
         fetchVoiceClips(),
         fetchBadges(),
+        fetchFollowerCounts(),
         fetchFollowing(),
         fetchFollowers(),
       ]);
@@ -304,15 +336,38 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [authUser?.id]);
 
-  const toggleFollow = (userId: string) => {
-    setIsFollowing(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
+  const toggleFollow = async (userId: string) => {
+    if (followLoading[userId]) return;
+
+    setFollowLoading(prev => ({ ...prev, [userId]: true }));
+
+    try {
+      if (isFollowing[userId]) {
+        // Unfollow
+        const success = await unfollowUser(userId);
+        if (success) {
+          setIsFollowing(prev => ({ ...prev, [userId]: false }));
+          // Refresh follower counts
+          await fetchFollowerCounts();
+        }
+      } else {
+        // Follow
+        const success = await followUser(userId);
+        if (success) {
+          setIsFollowing(prev => ({ ...prev, [userId]: true }));
+          // Refresh follower counts
+          await fetchFollowerCounts();
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+    } finally {
+      setFollowLoading(prev => ({ ...prev, [userId]: false }));
+    }
   };
 
   const mutualFollowsCount = followers.filter(
-    (follower: User) => isFollowing[follower.id]
+    (follower: SocialUserProfile) => isFollowing[follower.id]
   ).length;
 
   // Audio playback functions
@@ -396,37 +451,46 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
-  const renderUserItem = (user: User) => (
+  const renderUserItem = (user: SocialUserProfile) => (
     <TouchableOpacity
       key={user.id}
       style={styles.userItem}
-      onPress={() => navigation.navigate('UserProfile', { user })}
+      onPress={() => {
+        // Convert SocialUserProfile to Contact for navigation
+        const contactUser = {
+          id: user.id,
+          name: user.full_name || user.username,
+          username: user.username,
+          avatar: user.avatar_url || '👤',
+          language: user.primary_language || 'Unknown',
+          isOnline: false // Default to offline for now
+        };
+        navigation.navigate('UserProfile', { user: contactUser });
+      }}
     >
       <View style={styles.userAvatar}>
-        {user.avatar && user.avatar.startsWith('http') ? (
+        {user.avatar_url && user.avatar_url.startsWith('http') ? (
           <Image
-            source={{ uri: user.avatar }}
+            source={{ uri: user.avatar_url }}
             style={styles.avatarImage}
-            onError={() => console.log('Failed to load user avatar image:', user.avatar)}
+            onError={() => console.log('Failed to load user avatar image:', user.avatar_url)}
           />
         ) : (
-          <Text style={styles.userAvatarEmoji}>{user.avatar || '👤'}</Text>
+          <Text style={styles.userAvatarEmoji}>{user.avatar_url || '👤'}</Text>
         )}
         <View style={[
           styles.onlineIndicator,
-          { backgroundColor: user.isOnline ? '#10B981' : '#9CA3AF' }
+          { backgroundColor: '#9CA3AF' } // Default to offline for now
         ]} />
       </View>
       <View style={styles.userInfo}>
         <View style={styles.userNameContainer}>
-          <Text style={styles.userName}>{user.name}</Text>
-          {user.isVerified && (
-            <Ionicons name="checkmark-circle" size={16} color="#3B82F6" style={styles.verifiedIcon} />
-          )}
+          <Text style={styles.userName}>{user.full_name || user.username}</Text>
+          {/* Remove verified check for now since it's not in SocialUserProfile */}
         </View>
         <Text style={styles.userUsername}>@{user.username}</Text>
         <View style={styles.userStats}>
-          <Text style={styles.userStat}>{user.language}</Text>
+          <Text style={styles.userStat}>{user.primary_language || 'Unknown'}</Text>
           {isFollowing[user.id] && (
             <View style={styles.mutualFollowBadge}>
               <Text style={styles.mutualFollowText}>Follows you</Text>
@@ -440,6 +504,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           isFollowing[user.id] && styles.followingButton
         ]}
         onPress={() => toggleFollow(user.id)}
+        disabled={followLoading[user.id]}
       >
         <Text style={[
           styles.followButtonText,
@@ -672,24 +737,24 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
             {/* Follow Stats */}
             <View style={styles.followStatsContainer}>
-              <TouchableOpacity
-                style={styles.followStatItem}
-                onPress={() => setShowFollowersModal(true)}
-              >
-                <Text style={styles.followStatNumber}>{followers.length}</Text>
-                <Text style={styles.followStatLabel}>Followers</Text>
-                {mutualFollowsCount > 0 && (
-                  <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
-                )}
-              </TouchableOpacity>
+                             <TouchableOpacity
+                 style={styles.followStatItem}
+                 onPress={() => setShowFollowersModal(true)}
+               >
+                 <Text style={styles.followStatNumber}>{followerCounts.followers_count}</Text>
+                 <Text style={styles.followStatLabel}>Followers</Text>
+                 {mutualFollowsCount > 0 && (
+                   <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
+                 )}
+               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.followStatItem}
-                onPress={() => setShowFollowingModal(true)}
-              >
-                <Text style={styles.followStatNumber}>{following.length}</Text>
-                <Text style={styles.followStatLabel}>Following</Text>
-              </TouchableOpacity>
+               <TouchableOpacity
+                 style={styles.followStatItem}
+                 onPress={() => setShowFollowingModal(true)}
+               >
+                 <Text style={styles.followStatNumber}>{followerCounts.following_count}</Text>
+                 <Text style={styles.followStatLabel}>Following</Text>
+               </TouchableOpacity>
             </View>
           </View>
 

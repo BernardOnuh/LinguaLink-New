@@ -14,6 +14,17 @@ export interface Contact {
   isOnline: boolean;
 }
 
+export interface SocialUserProfile {
+  id: string;
+  username: string;
+  full_name: string;
+  avatar_url?: string;
+  primary_language?: string;
+  bio?: string;
+  location?: string;
+  created_at: string;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -66,7 +77,7 @@ export type RootStackParamList = {
     clipId?: string;
     language?: string;
   } | undefined;
-  
+
   // Chat routes
   ChatDetail: {
     contact: Contact;
@@ -83,7 +94,7 @@ export type RootStackParamList = {
   GroupCall: {
     group: Group;
   };
-  
+
   // New feature routes
   TurnVerse: undefined;
   WordChain: undefined;
@@ -99,7 +110,7 @@ export type RootStackParamList = {
   };
   ContactDiscovery: undefined;
   UserProfile: {
-    user: Contact;
+    user: Contact | SocialUserProfile;
   };
 };
 
@@ -112,10 +123,10 @@ export type TabParamList = {
 };
 
 // Screen props types
-export type RootStackScreenProps<T extends keyof RootStackParamList> = 
+export type RootStackScreenProps<T extends keyof RootStackParamList> =
   NativeStackScreenProps<RootStackParamList, T>;
 
-export type TabScreenProps<T extends keyof TabParamList> = 
+export type TabScreenProps<T extends keyof TabParamList> =
   BottomTabScreenProps<TabParamList, T>;
 
 // Combined navigation props for nested navigators
