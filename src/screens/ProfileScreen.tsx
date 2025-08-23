@@ -24,6 +24,20 @@ import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
+// Helper function to format time ago
+const getTimeAgo = (dateString: string): string => {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return 'Just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
+  return `${Math.floor(diffInSeconds / 31536000)}y ago`;
+};
+
 type ProfileScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Profile'>,
   NativeStackNavigationProp<RootStackParamList>
@@ -135,9 +149,50 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     if (!authUser?.id) return;
 
     try {
-      // For now, we'll use mock data since we don't have a voice_clips table yet
-      // TODO: Replace with actual Supabase query when voice_clips table is created
-      setVoiceClips([]);
+      const { data, error } = await supabase
+        .from('voice_clips')
+        .select(`
+          id,
+          phrase,
+          translation,
+          audio_url,
+          language,
+          dialect,
+          duration,
+          likes_count,
+          comments_count,
+          validations_count,
+          is_validated,
+          created_at
+        `)
+        .eq('user_id', authUser.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        console.log('Fetched voice clips:', data.length);
+
+        // Transform database data to match our interface
+        const transformedClips: VoiceClip[] = data.map(clip => ({
+          id: clip.id,
+          type: 'voice',
+          user: userProfile!, // We know userProfile exists when this runs
+          phrase: clip.phrase,
+          translation: clip.translation || '',
+          audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70], // Mock waveform for now
+          likes: clip.likes_count,
+          comments: clip.comments_count,
+          shares: 0, // Not implemented yet
+          validations: clip.validations_count,
+          needsValidation: !clip.is_validated,
+          timeAgo: getTimeAgo(clip.created_at),
+          isValidated: clip.is_validated,
+          userLanguages: [clip.language || 'Unknown']
+        }));
+
+        setVoiceClips(transformedClips);
+      }
     } catch (error) {
       console.error('Error fetching voice clips:', error);
     }
@@ -208,8 +263,11 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     setError(null);
 
     try {
+      // First fetch user profile
+      await fetchUserProfile();
+
+      // Then fetch other data that depends on user profile
       await Promise.all([
-        fetchUserProfile(),
         fetchVoiceClips(),
         fetchBadges(),
         fetchFollowing(),
@@ -318,7 +376,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const renderVoiceClip = (clip: VoiceClip) => (
     <View key={clip.id} style={styles.clipCard}>
       <View style={styles.clipHeader}>
-        <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+        <View style={styles.clipHeaderLeft}>
+          <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+          {clip.isValidated && (
+            <View style={styles.validationBadge}>
+              <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+              <Text style={styles.validationText}>Validated</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.clipTime}>{clip.timeAgo}</Text>
       </View>
       <Text style={styles.clipTranslation}>{clip.translation}</Text>
@@ -884,8 +950,29 @@ const styles = StyleSheet.create({
   clipHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 8,
+  },
+  clipHeaderLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  validationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  validationText: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '500',
+    marginLeft: 2,
   },
   clipPhrase: {
     fontSize: 20,
