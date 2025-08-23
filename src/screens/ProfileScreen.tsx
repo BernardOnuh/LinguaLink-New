@@ -14,6 +14,7 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
+import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -69,6 +70,7 @@ interface VoiceClip {
   phrase: string;
   translation: string;
   audioWaveform: number[];
+  audio_url?: string;
   likes: number;
   comments: number;
   shares: number;
@@ -77,6 +79,7 @@ interface VoiceClip {
   timeAgo: string;
   isValidated: boolean;
   userLanguages: string[];
+  duration: number;
 }
 
 interface Badge {
@@ -104,6 +107,11 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Audio playback state
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
 
   const [isFollowing, setIsFollowing] = useState<Record<string, boolean>>({});
 
@@ -172,6 +180,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
       if (data) {
         console.log('Fetched voice clips:', data.length);
+        console.log('Raw voice clips data:', data);
 
         // Transform database data to match our interface
         const transformedClips: VoiceClip[] = data.map(clip => ({
@@ -181,6 +190,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           phrase: clip.phrase,
           translation: clip.translation || '',
           audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70], // Mock waveform for now
+          audio_url: clip.audio_url || undefined,
           likes: clip.likes_count,
           comments: clip.comments_count,
           shares: 0, // Not implemented yet
@@ -188,7 +198,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           needsValidation: !clip.is_validated,
           timeAgo: getTimeAgo(clip.created_at),
           isValidated: clip.is_validated,
-          userLanguages: [clip.language || 'Unknown']
+          userLanguages: [clip.language || 'Unknown'],
+          duration: clip.duration || 0 // Add duration from database
         }));
 
         setVoiceClips(transformedClips);
@@ -304,6 +315,73 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     (follower: User) => isFollowing[follower.id]
   ).length;
 
+  // Audio playback functions
+  const playAudio = async (clipId: string, audioUrl: string) => {
+    try {
+      // Stop any currently playing audio
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+      }
+
+      setIsLoadingAudio(clipId);
+      setIsPlaying(null);
+
+      // Check if we have a valid audio URL
+      if (!audioUrl) {
+        console.log('No audio URL available');
+        Alert.alert('Error', 'No audio file available for this clip.');
+        setIsLoadingAudio(null);
+        return;
+      }
+
+      console.log('Playing audio file:', audioUrl);
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
+      setIsPlaying(clipId);
+      setIsLoadingAudio(null);
+
+      // Set up audio status update listener
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setIsPlaying(null);
+        }
+      });
+
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      Alert.alert('Error', 'Failed to play audio. Please try again.');
+      setIsLoadingAudio(null);
+    }
+  };
+
+  const stopAudio = async () => {
+    try {
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+      }
+      setSound(null);
+      setIsPlaying(null);
+    } catch (error) {
+      console.error('Error stopping audio:', error);
+    }
+  };
+
+  // Cleanup audio on component unmount
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
+
   const renderWaveform = (waveform: number[]) => (
     <View style={styles.waveformContainer}>
       {waveform.map((height, index) => (
@@ -389,7 +467,51 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       </View>
       <Text style={styles.clipTranslation}>{clip.translation}</Text>
 
+      {/* Audio Playback Section */}
+      <View style={styles.audioSection}>
+                 <TouchableOpacity
+           style={[styles.playButton, !clip.audio_url && styles.disabledPlayButton]}
+           onPress={() => {
+             if (isPlaying === clip.id) {
+               stopAudio();
+             } else {
+               console.log('Attempting to play audio for clip:', clip.id);
+               console.log('Audio URL:', clip.audio_url);
+               if (clip.audio_url) {
+                 playAudio(clip.id, clip.audio_url);
+               }
+             }
+           }}
+           disabled={isLoadingAudio === clip.id || !clip.audio_url}
+         >
+          {isLoadingAudio === clip.id ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : isPlaying === clip.id ? (
+            <Ionicons name="pause" size={20} color="#FFFFFF" />
+          ) : (
+            <Ionicons name="play" size={20} color="#FFFFFF" />
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.audioInfo}>
+          <Text style={styles.audioDuration}>
+            {clip.timeAgo} • {clip.duration}s • {clip.userLanguages.join(', ')}
+          </Text>
+          {isPlaying === clip.id && (
+            <Text style={styles.playingText}>Playing...</Text>
+          )}
+        </View>
+      </View>
+
       {renderWaveform(clip.audioWaveform)}
+
+      {/* Playing indicator */}
+      {isPlaying === clip.id && (
+        <View style={styles.playingIndicator}>
+          <View style={styles.playingDot} />
+          <Text style={styles.playingIndicatorText}>Now Playing</Text>
+        </View>
+      )}
 
       <View style={styles.clipStats}>
         <View style={styles.statItem}>
@@ -1267,6 +1389,60 @@ const styles = StyleSheet.create({
     color: '#FF8A00',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Audio playback styles
+  audioSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 8,
+  },
+  playButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF8A00',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  disabledPlayButton: {
+    backgroundColor: '#D1D5DB',
+  },
+  audioInfo: {
+    flex: 1,
+  },
+  audioDuration: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  playingText: {
+    fontSize: 12,
+    color: '#FF8A00',
+    fontWeight: '500',
+  },
+  playingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3E2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  playingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF8A00',
+    marginRight: 6,
+  },
+  playingIndicatorText: {
+    fontSize: 12,
+    color: '#FF8A00',
+    fontWeight: '500',
   },
 });
 export default ProfileScreen;

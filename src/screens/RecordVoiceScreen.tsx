@@ -12,12 +12,15 @@ import {
   Animated,
   Modal,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
+import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
+import { uploadAudioFile } from '../utils/storage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -69,15 +72,47 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [phrase, setPhrase] = useState('');
   const [translation, setTranslation] = useState('');
+
+  // Audio recording state
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<Audio.RecordingStatus | null>(null);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
   const pulseAnimation = useRef(new Animated.Value(1)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const isRemix = route?.params?.isRemix || false;
   const isDuet = route?.params?.isDuet || false;
   const originalClip = route?.params?.originalClip;
+
+  // Request audio recording permissions
+  useEffect(() => {
+    (async () => {
+      const { status } = await Audio.requestPermissionsAsync();
+      setHasPermission(status === 'granted');
+    })();
+  }, []);
+
+  // Set up audio mode for recording
+  useEffect(() => {
+    (async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (error) {
+        console.error('Error setting audio mode:', error);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -121,32 +156,69 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
     };
   }, [isRecording, pulseAnimation]);
 
-  const handleRecord = () => {
+  const handleRecord = async () => {
     if (!selectedLanguage) {
       Alert.alert('Select Language', 'Please select the language you\'ll be speaking in before recording.');
       setShowLanguageModal(true);
       return;
     }
 
+    if (!hasPermission) {
+      Alert.alert('Permission Required', 'Please grant microphone permission to record audio.');
+      return;
+    }
+
     if (isRecording) {
-      setIsRecording(false);
-      setHasRecorded(true);
-      // Simulate recording completion - in real app, this would be the actual audio file
-      setAudioUri('mock-audio-uri');
-      setPhrase(getPromptText());
-      setTranslation('Translation will be added later');
-      Alert.alert('Recording Complete', 'Your voice clip has been recorded!');
+      // Stop recording
+      try {
+        if (recording) {
+          await recording.stopAndUnloadAsync();
+          const uri = recording.getURI();
+          setAudioUri(uri);
+          setRecording(null);
+          setRecordingStatus(null);
+        }
+        setIsRecording(false);
+        setHasRecorded(true);
+        setPhrase(getPromptText());
+        setTranslation('Translation will be added later');
+        Alert.alert('Recording Complete', 'Your voice clip has been recorded!');
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+        Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      }
     } else {
+      // Start recording
       if (recordingTime >= 60) {
         Alert.alert('Maximum Length', 'Recordings are limited to 60 seconds');
         return;
       }
-      setIsRecording(true);
-      setRecordingTime(0);
-      setHasRecorded(false);
-      setAudioUri(null);
-      setPhrase('');
-      setTranslation('');
+
+      try {
+        const { recording: newRecording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+
+        setRecording(newRecording);
+        setIsRecording(true);
+        setRecordingTime(0);
+        setHasRecorded(false);
+        setAudioUri(null);
+        setPhrase('');
+        setTranslation('');
+
+        // Set up status update listener
+        newRecording.setOnRecordingStatusUpdate((status) => {
+          setRecordingStatus(status);
+          if (status.isRecording) {
+            setRecordingTime(Math.floor(status.durationMillis / 1000));
+          }
+        });
+
+      } catch (error) {
+        console.error('Error starting recording:', error);
+        Alert.alert('Error', 'Failed to start recording. Please try again.');
+      }
     }
   };
 
@@ -157,19 +229,29 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
     }
 
     setIsSaving(true);
+    setUploadProgress('Preparing upload...');
 
     try {
-      // In a real app, we would upload the audio file to Supabase Storage first
-      // For now, we'll create the database record with a mock audio URL
-      const audioUrl = `https://example.com/audio/${Date.now()}.mp3`; // Mock URL
+      // Upload audio file to Supabase Storage
+      console.log('Uploading audio file to Supabase Storage...');
+      setUploadProgress('Uploading audio file...');
+      const uploadResult = await uploadAudioFile(audioUri, authUser.id);
 
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || 'Failed to upload audio file');
+      }
+
+      console.log('Audio file uploaded successfully:', uploadResult.url);
+      setUploadProgress('Saving to database...');
+
+      // Save the voice clip with the cloud URL
       const { data, error } = await supabase
         .from('voice_clips')
         .insert({
           user_id: authUser.id,
           phrase: phrase || getPromptText(),
           translation: translation || 'Translation will be added later',
-          audio_url: audioUrl,
+          audio_url: uploadResult.url, // Use the cloud URL
           language: selectedLanguage.name,
           dialect: selectedLanguage.dialect || null,
           duration: recordingTime,
@@ -184,6 +266,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       if (error) throw error;
 
       console.log('Voice clip saved successfully:', data);
+      console.log('Audio file available at:', uploadResult.url);
 
       const clipType = isRemix ? 'remix' : isDuet ? 'duet' : 'original clip';
       Alert.alert(
@@ -204,6 +287,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       Alert.alert('Error', 'Failed to save your recording. Please try again.');
     } finally {
       setIsSaving(false);
+      setUploadProgress('');
     }
   };
 
@@ -216,15 +300,35 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         {
           text: 'Discard',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            // Stop recording if it's active
+            if (recording) {
+              try {
+                await recording.stopAndUnloadAsync();
+              } catch (error) {
+                console.error('Error stopping recording:', error);
+              }
+            }
             setIsRecording(false);
             setRecordingTime(0);
             setHasRecorded(false);
+            setRecording(null);
+            setRecordingStatus(null);
+            setAudioUri(null);
           }
         }
       ]
     );
   };
+
+  // Cleanup recording on component unmount
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync();
+      }
+    };
+  }, [recording]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -403,9 +507,10 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
               style={[
                 styles.recordButton,
                 isRecording && styles.recordingButton,
-                !selectedLanguage && styles.disabledButton
+                (!selectedLanguage || !hasPermission) && styles.disabledButton
               ]}
               onPress={handleRecord}
+              disabled={!hasPermission}
             >
               <Ionicons
                 name={isRecording ? "stop" : "mic"}
@@ -417,10 +522,13 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
 
         <View style={styles.statusContainer}>
-          {!selectedLanguage && (
+          {!hasPermission && (
+            <Text style={styles.statusText}>Microphone permission required</Text>
+          )}
+          {!selectedLanguage && hasPermission && (
             <Text style={styles.statusText}>Select a language to start recording</Text>
           )}
-          {selectedLanguage && !isRecording && !hasRecorded && (
+          {selectedLanguage && !isRecording && !hasRecorded && hasPermission && (
             <Text style={styles.statusText}>Tap to start recording in {selectedLanguage.name}</Text>
           )}
           {isRecording && (
@@ -440,20 +548,20 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={styles.discardButtonText}>Discard</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.saveButton, isSaving && styles.disabledButton]}
-            onPress={handleSave}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-            )}
-            <Text style={styles.saveButtonText}>
-              {isSaving ? 'Saving...' : `Save ${isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}`}
-            </Text>
-          </TouchableOpacity>
+                     <TouchableOpacity
+             style={[styles.saveButton, isSaving && styles.disabledButton]}
+             onPress={handleSave}
+             disabled={isSaving}
+           >
+             {isSaving ? (
+               <ActivityIndicator size="small" color="#FFFFFF" />
+             ) : (
+               <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+             )}
+             <Text style={styles.saveButtonText}>
+               {isSaving ? (uploadProgress || 'Saving...') : `Save ${isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}`}
+             </Text>
+           </TouchableOpacity>
         </View>
       )}
 

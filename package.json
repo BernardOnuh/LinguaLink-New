@@ -21,6 +21,7 @@
     "expo-camera": "~16.1.11",
     "expo-crypto": "~14.1.5",
     "expo-dev-client": "~5.2.4",
+    "expo-file-system": "^18.1.11",
     "expo-secure-store": "^14.2.3",
     "expo-standard-web-crypto": "^2.1.4",
     "expo-status-bar": "~2.2.3",
