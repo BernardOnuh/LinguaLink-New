@@ -11,10 +11,13 @@ import {
   Alert,
   Animated,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { useAuth } from '../context/AuthProvider';
+import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
@@ -59,11 +62,16 @@ const languages: Language[] = [
 ];
 
 const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
+  const { user: authUser } = useAuth();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [hasRecorded, setHasRecorded] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
+  const [phrase, setPhrase] = useState('');
+  const [translation, setTranslation] = useState('');
   const pulseAnimation = useRef(new Animated.Value(1)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
@@ -123,6 +131,10 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
     if (isRecording) {
       setIsRecording(false);
       setHasRecorded(true);
+      // Simulate recording completion - in real app, this would be the actual audio file
+      setAudioUri('mock-audio-uri');
+      setPhrase(getPromptText());
+      setTranslation('Translation will be added later');
       Alert.alert('Recording Complete', 'Your voice clip has been recorded!');
     } else {
       if (recordingTime >= 60) {
@@ -132,21 +144,67 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       setIsRecording(true);
       setRecordingTime(0);
       setHasRecorded(false);
+      setAudioUri(null);
+      setPhrase('');
+      setTranslation('');
     }
   };
 
-  const handleSave = () => {
-    const clipType = isRemix ? 'remix' : isDuet ? 'duet' : 'original clip';
-    Alert.alert(
-      'Save Recording',
-      `Your ${clipType} has been saved to your library! It will be available for validation by native speakers of ${selectedLanguage?.name}${selectedLanguage?.dialect ? ` (${selectedLanguage.dialect})` : ''}.`,
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack()
-        }
-      ]
-    );
+  const handleSave = async () => {
+    if (!authUser?.id || !selectedLanguage || !audioUri) {
+      Alert.alert('Error', 'Missing required information to save recording.');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      // In a real app, we would upload the audio file to Supabase Storage first
+      // For now, we'll create the database record with a mock audio URL
+      const audioUrl = `https://example.com/audio/${Date.now()}.mp3`; // Mock URL
+
+      const { data, error } = await supabase
+        .from('voice_clips')
+        .insert({
+          user_id: authUser.id,
+          phrase: phrase || getPromptText(),
+          translation: translation || 'Translation will be added later',
+          audio_url: audioUrl,
+          language: selectedLanguage.name,
+          dialect: selectedLanguage.dialect || null,
+          duration: recordingTime,
+          likes_count: 0,
+          comments_count: 0,
+          validations_count: 0,
+          is_validated: false
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('Voice clip saved successfully:', data);
+
+      const clipType = isRemix ? 'remix' : isDuet ? 'duet' : 'original clip';
+      Alert.alert(
+        'Success!',
+        `Your ${clipType} has been saved to your library! It will be available for validation by native speakers of ${selectedLanguage.name}${selectedLanguage.dialect ? ` (${selectedLanguage.dialect})` : ''}.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate back to profile to see the new clip
+              navigation.goBack();
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error saving voice clip:', error);
+      Alert.alert('Error', 'Failed to save your recording. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDiscard = () => {
@@ -238,7 +296,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -248,14 +306,23 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={{ width: 24 }} />
       </View>
 
+      {/* User Info */}
+      {authUser && (
+        <View style={styles.userInfoContainer}>
+          <Text style={styles.userInfoText}>
+            Recording as: {authUser.email}
+          </Text>
+        </View>
+      )}
+
       {/* Original Clip Reference (for Remix/Duet) */}
       {(isRemix || isDuet) && originalClip && (
         <View style={styles.originalClipCard}>
           <View style={styles.originalClipHeader}>
-            <Ionicons 
-              name={isRemix ? "repeat" : "people"} 
-              size={16} 
-              color={isRemix ? "#8B5CF6" : "#10B981"} 
+            <Ionicons
+              name={isRemix ? "repeat" : "people"}
+              size={16}
+              color={isRemix ? "#8B5CF6" : "#10B981"}
             />
             <Text style={styles.originalClipType}>
               {isRemix ? 'Remixing' : 'Responding to'}
@@ -269,7 +336,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       )}
 
       {/* Language Selection */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.languageSelector}
         onPress={() => setShowLanguageModal(true)}
       >
@@ -278,7 +345,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           styles.languageSelectorText,
           selectedLanguage && styles.languageSelected
         ]}>
-          {selectedLanguage 
+          {selectedLanguage
             ? `${selectedLanguage.name}${selectedLanguage.dialect ? ` / ${selectedLanguage.dialect}` : ''}`
             : 'Select your language'
           }
@@ -372,11 +439,19 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
             <Ionicons name="trash-outline" size={20} color="#EF4444" />
             <Text style={styles.discardButtonText}>Discard</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+
+          <TouchableOpacity
+            style={[styles.saveButton, isSaving && styles.disabledButton]}
+            onPress={handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+            )}
             <Text style={styles.saveButtonText}>
-              Save {isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}
+              {isSaving ? 'Saving...' : `Save ${isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -433,6 +508,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1F2937',
+  },
+  userInfoContainer: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: width * 0.05,
+    paddingVertical: 8,
+  },
+  userInfoText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   originalClipCard: {
     backgroundColor: '#F0F9FF',
