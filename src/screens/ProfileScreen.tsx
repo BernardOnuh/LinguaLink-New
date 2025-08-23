@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,33 @@ import {
   Dimensions,
   Modal,
   Image,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
+import { useAuth } from '../context/AuthProvider';
+import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
+
+// Helper function to format time ago
+const getTimeAgo = (dateString: string): string => {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return 'Just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
+  return `${Math.floor(diffInSeconds / 31536000)}y ago`;
+};
 
 type ProfileScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Profile'>,
@@ -39,6 +58,8 @@ interface User {
   bio?: string;
   location?: string;
   joinedDate?: string;
+  email?: string;
+  website?: string;
 }
 
 interface VoiceClip {
@@ -68,162 +89,209 @@ interface Badge {
   date?: string;
 }
 
-// Mock data
-const mockUser: User = {
-  id: '1',
-  name: 'Nana Bambara',
-  username: 'Onuh',
-  avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
-  language: 'Yoruba / Lagos Dialect',
-  isVerified: true,
-  isOnline: true,
-  bio: 'Language enthusiast preserving African dialects through voice recordings',
-  location: 'Lagos, Nigeria',
-  joinedDate: 'Joined March 2023',
-};
-
-const mockFollowing: User[] = [
-  {
-    id: '2',
-    name: 'Adunni Lagos',
-    username: 'Adur',
-    avatar: 'https://randomuser.me/api/portraits/women/68.jpg',
-    language: 'Yoruba / Ekiti Dialect',
-    isVerified: false,
-    isOnline: true,
-  },
-  {
-    id: '3',
-    name: 'Chidi Okafor',
-    username: 'ChidiIgbo',
-    avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-    language: 'Igbo / Nsukka',
-    isVerified: true,
-    isOnline: false,
-  },
-];
-
-const mockFollowers: User[] = [
-  {
-    id: '4',
-    name: 'Aisha Mohammed',
-    username: 'aisha_storyteller',
-    avatar: 'https://randomuser.me/api/portraits/women/65.jpg',
-    language: 'Hausa',
-    isVerified: false,
-    isOnline: true,
-  },
-  {
-    id: '5',
-    name: 'Kemi Adebayo',
-    username: 'kemi_tales',
-    avatar: 'https://randomuser.me/api/portraits/women/33.jpg',
-    language: 'Yoruba',
-    isVerified: true,
-    isOnline: false,
-  },
-  {
-    id: '6',
-    name: 'Oluwaseun Adeleke',
-    username: 'seunmusic',
-    avatar: 'https://randomuser.me/api/portraits/men/45.jpg',
-    language: 'Yoruba / Lagos Dialect',
-    isVerified: false,
-    isOnline: true,
-  },
-];
-
-const mockVoiceClips: VoiceClip[] = [
-  {
-    id: '1',
-    type: 'voice',
-    user: mockUser,
-    phrase: 'E kààrọ́',
-    translation: 'Good morning in Yoruba',
-    audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70],
-    likes: 45,
-    comments: 8,
-    shares: 12,
-    validations: 23,
-    needsValidation: false,
-    timeAgo: '2 days ago',
-    isValidated: true,
-    userLanguages: ['Yoruba / Lagos Dialect']
-  },
-  {
-    id: '2',
-    type: 'voice',
-    user: mockUser,
-    phrase: 'Bawo ni',
-    translation: 'How are you in Yoruba',
-    audioWaveform: [30, 50, 70, 40, 60, 80, 90, 70, 40, 20, 50, 60, 30, 40, 60, 50],
-    likes: 32,
-    comments: 12,
-    shares: 5,
-    validations: 18,
-    needsValidation: false,
-    timeAgo: '1 week ago',
-    isValidated: true,
-    userLanguages: ['Yoruba / Lagos Dialect']
-  }
-];
-
-const mockBadges: Badge[] = [
-  {
-    id: '1',
-    title: 'Language Pioneer',
-    description: 'Welcome to LinguaLink! Ready to preserve languages.',
-    icon: 'sparkles',
-    color: '#FF8A00',
-    earned: true,
-    date: 'Today'
-  },
-  {
-    id: '2',
-    title: 'First Recording',
-    description: 'You made your first voice recording!',
-    icon: 'mic',
-    color: '#10B981',
-    earned: true,
-    date: 'Yesterday'
-  },
-  {
-    id: '3',
-    title: 'Community Helper',
-    description: 'You validated 10+ recordings',
-    icon: 'checkmark-circle',
-    color: '#3B82F6',
-    earned: false
-  },
-  {
-    id: '4',
-    title: 'Story Teller',
-    description: 'Created your first animated story',
-    icon: 'book',
-    color: '#8B5CF6',
-    earned: false
-  },
-  {
-    id: '5',
-    title: 'Duet Master',
-    description: 'Created 5+ duets with others',
-    icon: 'people',
-    color: '#EC4899',
-    earned: false
-  }
-];
-
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
+  const { user: authUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'Clips' | 'Badges' | 'Rewards'>('Clips');
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
-  const [isFollowing, setIsFollowing] = useState<Record<string, boolean>>({
-    '2': true, // Adunni Lagos
-    '3': false, // Chidi Okafor
-    '4': true, // Aisha Mohammed
-    '5': false, // Kemi Adebayo
-    '6': true, // Oluwaseun Adeleke
-  });
+
+  // Data states
+  const [userProfile, setUserProfile] = useState<User | null>(null);
+  const [voiceClips, setVoiceClips] = useState<VoiceClip[]>([]);
+  const [badges, setBadges] = useState<Badge[]>([]);
+  const [following, setFollowing] = useState<User[]>([]);
+  const [followers, setFollowers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [isFollowing, setIsFollowing] = useState<Record<string, boolean>>({});
+
+  // Data fetching functions
+  const fetchUserProfile = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        console.log('Fetched profile data:', data);
+        console.log('Avatar URL:', data.avatar_url);
+
+        setUserProfile({
+          id: data.id,
+          name: data.full_name || 'User',
+          username: data.username || 'user',
+          avatar: data.avatar_url || '👤',
+          language: data.primary_language || 'English',
+          isVerified: false,
+          isOnline: true,
+          bio: data.bio,
+          location: data.location,
+          email: data.email,
+          website: data.website,
+          joinedDate: data.created_at ? `Joined ${new Date(data.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      setError('Failed to load profile');
+    }
+  };
+
+  const fetchVoiceClips = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('voice_clips')
+        .select(`
+          id,
+          phrase,
+          translation,
+          audio_url,
+          language,
+          dialect,
+          duration,
+          likes_count,
+          comments_count,
+          validations_count,
+          is_validated,
+          created_at
+        `)
+        .eq('user_id', authUser.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        console.log('Fetched voice clips:', data.length);
+
+        // Transform database data to match our interface
+        const transformedClips: VoiceClip[] = data.map(clip => ({
+          id: clip.id,
+          type: 'voice',
+          user: userProfile!, // We know userProfile exists when this runs
+          phrase: clip.phrase,
+          translation: clip.translation || '',
+          audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70], // Mock waveform for now
+          likes: clip.likes_count,
+          comments: clip.comments_count,
+          shares: 0, // Not implemented yet
+          validations: clip.validations_count,
+          needsValidation: !clip.is_validated,
+          timeAgo: getTimeAgo(clip.created_at),
+          isValidated: clip.is_validated,
+          userLanguages: [clip.language || 'Unknown']
+        }));
+
+        setVoiceClips(transformedClips);
+      }
+    } catch (error) {
+      console.error('Error fetching voice clips:', error);
+    }
+  };
+
+  const fetchBadges = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      // Mock badges for now - can be replaced with actual badges table later
+      const mockBadges: Badge[] = [
+        {
+          id: '1',
+          title: 'Language Pioneer',
+          description: 'Welcome to LinguaLink! Ready to preserve languages.',
+          icon: 'sparkles',
+          color: '#FF8A00',
+          earned: true,
+          date: 'Today'
+        },
+        {
+          id: '2',
+          title: 'First Recording',
+          description: 'You made your first voice recording!',
+          icon: 'mic',
+          color: '#10B981',
+          earned: false
+        },
+        {
+          id: '3',
+          title: 'Community Helper',
+          description: 'You validated 10+ recordings',
+          icon: 'checkmark-circle',
+          color: '#3B82F6',
+          earned: false
+        }
+      ];
+      setBadges(mockBadges);
+    } catch (error) {
+      console.error('Error fetching badges:', error);
+    }
+  };
+
+  const fetchFollowing = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      // Mock following data for now - can be replaced with actual following table later
+      setFollowing([]);
+    } catch (error) {
+      console.error('Error fetching following:', error);
+    }
+  };
+
+  const fetchFollowers = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      // Mock followers data for now - can be replaced with actual followers table later
+      setFollowers([]);
+    } catch (error) {
+      console.error('Error fetching followers:', error);
+    }
+  };
+
+  const loadProfileData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // First fetch user profile
+      await fetchUserProfile();
+
+      // Then fetch other data that depends on user profile
+      await Promise.all([
+        fetchVoiceClips(),
+        fetchBadges(),
+        fetchFollowing(),
+        fetchFollowers(),
+      ]);
+    } catch (error) {
+      console.error('Error loading profile data:', error);
+      setError('Failed to load profile data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadProfileData();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    if (authUser?.id) {
+      loadProfileData();
+    }
+  }, [authUser?.id]);
 
   const toggleFollow = (userId: string) => {
     setIsFollowing(prev => ({
@@ -232,8 +300,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }));
   };
 
-  const mutualFollowsCount = mockFollowers.filter(
-    follower => isFollowing[follower.id]
+  const mutualFollowsCount = followers.filter(
+    (follower: User) => isFollowing[follower.id]
   ).length;
 
   const renderWaveform = (waveform: number[]) => (
@@ -251,13 +319,21 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   const renderUserItem = (user: User) => (
-    <TouchableOpacity 
-      key={user.id} 
+    <TouchableOpacity
+      key={user.id}
       style={styles.userItem}
       onPress={() => navigation.navigate('UserProfile', { user })}
     >
       <View style={styles.userAvatar}>
-        <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
+        {user.avatar && user.avatar.startsWith('http') ? (
+          <Image
+            source={{ uri: user.avatar }}
+            style={styles.avatarImage}
+            onError={() => console.log('Failed to load user avatar image:', user.avatar)}
+          />
+        ) : (
+          <Text style={styles.userAvatarEmoji}>{user.avatar || '👤'}</Text>
+        )}
         <View style={[
           styles.onlineIndicator,
           { backgroundColor: user.isOnline ? '#10B981' : '#9CA3AF' }
@@ -280,7 +356,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           )}
         </View>
       </View>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[
           styles.followButton,
           isFollowing[user.id] && styles.followingButton
@@ -300,11 +376,19 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const renderVoiceClip = (clip: VoiceClip) => (
     <View key={clip.id} style={styles.clipCard}>
       <View style={styles.clipHeader}>
-        <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+        <View style={styles.clipHeaderLeft}>
+          <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+          {clip.isValidated && (
+            <View style={styles.validationBadge}>
+              <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+              <Text style={styles.validationText}>Validated</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.clipTime}>{clip.timeAgo}</Text>
       </View>
       <Text style={styles.clipTranslation}>{clip.translation}</Text>
-      
+
       {renderWaveform(clip.audioWaveform)}
 
       <View style={styles.clipStats}>
@@ -331,10 +415,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const renderBadge = (badge: Badge) => (
     <View key={badge.id} style={styles.badgeCard}>
       <View style={[styles.badgeIcon, { backgroundColor: `${badge.color}20` }]}>
-        <Ionicons 
-          name={badge.icon as any} 
-          size={24} 
-          color={badge.color} 
+        <Ionicons
+          name={badge.icon as any}
+          size={24}
+          color={badge.color}
         />
         {!badge.earned && (
           <View style={styles.lockIcon}>
@@ -352,14 +436,56 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#FFFFFF" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProfileData}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!userProfile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
+        <View style={styles.errorContainer}>
+          <Ionicons name="person-outline" size={48} color="#FFFFFF" />
+          <Text style={styles.errorText}>Profile not found</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      
-      <ScrollView 
+
+      <ScrollView
         style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         stickyHeaderIndices={[1]} // Make tabs sticky
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
@@ -369,74 +495,82 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
               <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
-          
+
           {/* Profile Info */}
           <View style={styles.profileInfo}>
             <View style={styles.avatarContainer}>
               <View style={styles.avatar}>
-                <Image source={{ uri: mockUser.avatar }} style={styles.avatarImage} />
+                {userProfile.avatar && userProfile.avatar.startsWith('http') ? (
+                  <Image
+                    source={{ uri: userProfile.avatar }}
+                    style={styles.avatarImage}
+                    onError={() => console.log('Failed to load avatar image:', userProfile.avatar)}
+                  />
+                ) : (
+                  <Text style={styles.avatarEmoji}>{userProfile.avatar || '👤'}</Text>
+                )}
                 <View style={[
                   styles.onlineIndicator,
-                  { backgroundColor: mockUser.isOnline ? '#10B981' : '#9CA3AF' }
+                  { backgroundColor: userProfile.isOnline ? '#10B981' : '#9CA3AF' }
                 ]} />
               </View>
             </View>
-            
+
             <View style={styles.profileNameContainer}>
-              <Text style={styles.profileName}>{mockUser.name}</Text>
-              {mockUser.isVerified && (
+              <Text style={styles.profileName}>{userProfile.name}</Text>
+              {userProfile.isVerified && (
                 <Ionicons name="checkmark-circle" size={20} color="#3B82F6" style={styles.verifiedIcon} />
               )}
             </View>
-            
-            <Text style={styles.profileUsername}>@{mockUser.username}</Text>
-            
-            {mockUser.bio && (
-              <Text style={styles.profileBio}>{mockUser.bio}</Text>
+
+            <Text style={styles.profileUsername}>@{userProfile.username}</Text>
+
+            {userProfile.bio && (
+              <Text style={styles.profileBio}>{userProfile.bio}</Text>
             )}
-            
+
             <View style={styles.profileDetails}>
-              {mockUser.location && (
+              {userProfile.location && (
                 <View style={styles.detailItem}>
                   <Ionicons name="location-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.detailText}>{mockUser.location}</Text>
+                  <Text style={styles.detailText}>{userProfile.location}</Text>
                 </View>
               )}
-              {mockUser.joinedDate && (
+              {userProfile.joinedDate && (
                 <View style={styles.detailItem}>
                   <Ionicons name="calendar-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.detailText}>{mockUser.joinedDate}</Text>
+                  <Text style={styles.detailText}>{userProfile.joinedDate}</Text>
                 </View>
               )}
             </View>
-            
+
             <View style={styles.languageTag}>
-              <Text style={styles.languageText}>{mockUser.language}</Text>
+              <Text style={styles.languageText}>{userProfile.language}</Text>
             </View>
 
             {/* Follow Stats */}
             <View style={styles.followStatsContainer}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.followStatItem}
                 onPress={() => setShowFollowersModal(true)}
               >
-                <Text style={styles.followStatNumber}>{mockFollowers.length}</Text>
+                <Text style={styles.followStatNumber}>{followers.length}</Text>
                 <Text style={styles.followStatLabel}>Followers</Text>
                 {mutualFollowsCount > 0 && (
                   <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
                 )}
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={styles.followStatItem}
                 onPress={() => setShowFollowingModal(true)}
               >
-                <Text style={styles.followStatNumber}>{mockFollowing.length}</Text>
+                <Text style={styles.followStatNumber}>{following.length}</Text>
                 <Text style={styles.followStatLabel}>Following</Text>
               </TouchableOpacity>
             </View>
           </View>
-          
+
           {/* Stats */}
           <View style={styles.statsContainer}>
             <View style={styles.statCard}>
@@ -444,7 +578,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.statLabel}>Validations</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{mockVoiceClips.length}</Text>
+              <Text style={styles.statNumber}>{voiceClips.length}</Text>
               <Text style={styles.statLabel}>Clips</Text>
             </View>
             <View style={styles.statCard}>
@@ -488,8 +622,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.content}>
           {activeTab === 'Clips' && (
             <View style={styles.clipsSection}>
-              {mockVoiceClips.length > 0 ? (
-                mockVoiceClips.map(renderVoiceClip)
+                          {voiceClips.length > 0 ? (
+              voiceClips.map(renderVoiceClip)
               ) : (
                 <View style={styles.emptyState}>
                   <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
@@ -497,7 +631,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                   <Text style={styles.emptyStateDescription}>
                     Start recording to share your voice with the world
                   </Text>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.recordButton}
                     onPress={() => navigation.navigate('RecordVoice')}
                   >
@@ -512,13 +646,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           {activeTab === 'Badges' && (
             <View style={styles.badgesSection}>
               <Text style={styles.sectionTitle}>Your Badges</Text>
-              {mockBadges
-                .filter(badge => badge.earned)
+              {badges
+                .filter((badge: Badge) => badge.earned)
                 .map(renderBadge)}
-              
+
               <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Available Badges</Text>
-              {mockBadges
-                .filter(badge => !badge.earned)
+              {badges
+                .filter((badge: Badge) => !badge.earned)
                 .map(renderBadge)}
             </View>
           )}
@@ -531,7 +665,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.emptyStateDescription}>
                   Earn points by contributing to unlock rewards
                 </Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.recordButton}
                   onPress={() => navigation.navigate('Rewards')}
                 >
@@ -553,14 +687,14 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Following ({mockFollowing.length})</Text>
+            <Text style={styles.modalTitle}>Following ({following.length})</Text>
             <TouchableOpacity onPress={() => setShowFollowingModal(false)}>
               <Ionicons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalContent}>
-            {mockFollowing.length > 0 ? (
-              mockFollowing.map(renderUserItem)
+            {following.length > 0 ? (
+              following.map(renderUserItem)
             ) : (
               <View style={styles.emptyModalState}>
                 <Ionicons name="people-outline" size={48} color="#D1D5DB" />
@@ -580,14 +714,14 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Followers ({mockFollowers.length})</Text>
+            <Text style={styles.modalTitle}>Followers ({followers.length})</Text>
             <TouchableOpacity onPress={() => setShowFollowersModal(false)}>
               <Ionicons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalContent}>
-            {mockFollowers.length > 0 ? (
-              mockFollowers.map(renderUserItem)
+            {followers.length > 0 ? (
+              followers.map(renderUserItem)
             ) : (
               <View style={styles.emptyModalState}>
                 <Ionicons name="people-outline" size={48} color="#D1D5DB" />
@@ -648,6 +782,11 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: '100%',
     height: '100%',
+  },
+  avatarEmoji: {
+    fontSize: 40,
+    textAlign: 'center',
+    lineHeight: 80,
   },
   onlineIndicator: {
     position: 'absolute',
@@ -811,8 +950,29 @@ const styles = StyleSheet.create({
   clipHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 8,
+  },
+  clipHeaderLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  validationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  validationText: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '500',
+    marginLeft: 2,
   },
   clipPhrase: {
     fontSize: 20,
@@ -1007,6 +1167,11 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
+  userAvatarEmoji: {
+    fontSize: 24,
+    textAlign: 'center',
+    lineHeight: 48,
+  },
   userInfo: {
     flex: 1,
   },
@@ -1063,6 +1228,45 @@ const styles = StyleSheet.create({
   },
   followingButtonText: {
     color: '#4B5563',
+  },
+  // Loading and error states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FF8A00',
+  },
+  loadingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginTop: 16,
+    fontWeight: '500',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FF8A00',
+    paddingHorizontal: 32,
+  },
+  errorText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 24,
+    fontWeight: '500',
+  },
+  retryButton: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FF8A00',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 export default ProfileScreen;
