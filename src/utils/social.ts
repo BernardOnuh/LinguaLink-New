@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { createFollowerNotification } from './notifications';
 
 export interface FollowerCounts {
   followers_count: number;
@@ -30,10 +31,13 @@ export interface FollowRelationship {
  */
 export const followUser = async (userId: string): Promise<boolean> => {
   try {
+    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    if (!currentUserId) return false;
+
     const { error } = await supabase
       .from('followers')
       .insert({
-        follower_id: (await supabase.auth.getUser()).data.user?.id,
+        follower_id: currentUserId,
         following_id: userId,
       });
 
@@ -41,6 +45,9 @@ export const followUser = async (userId: string): Promise<boolean> => {
       console.error('Error following user:', error);
       return false;
     }
+
+    // Create notification for the user being followed
+    await createFollowerNotification(currentUserId, userId);
 
     return true;
   } catch (error) {
