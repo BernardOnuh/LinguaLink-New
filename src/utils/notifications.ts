@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 export interface Notification {
   id: string;
   user_id: string;
-  type: 'new_follower' | 'new_validation' | 'clip_validated' | 'new_comment' | 'mention' | 'achievement' | 'welcome';
+  type: 'new_follower' | 'new_validation' | 'clip_validated' | 'new_comment' | 'new_like' | 'comment_liked' | 'mention' | 'achievement' | 'welcome';
   title: string;
   message: string;
   data?: any;
@@ -317,6 +317,100 @@ export const createWelcomeNotification = async (userId: string): Promise<boolean
     return await createNotification(userId, 'welcome', title, message);
   } catch (error) {
     console.error('Error creating welcome notification:', error);
+    return false;
+  }
+};
+
+/**
+ * Create a comment notification
+ * @param commenterId - ID of the user who commented
+ * @param clipOwnerId - ID of the clip owner
+ * @param clipId - ID of the voice clip
+ * @param clipPhrase - Phrase from the voice clip
+ * @param commentContent - Content of the comment
+ * @returns Promise<boolean>
+ */
+export const createCommentNotification = async (
+  commenterId: string,
+  clipOwnerId: string,
+  clipId: string,
+  clipPhrase: string,
+  commentContent: string
+): Promise<boolean> => {
+  try {
+    // Don't notify if commenting on own clip
+    if (commenterId === clipOwnerId) return true;
+
+    // Get commenter's profile info
+    const { data: commenterProfile } = await supabase
+      .from('profiles')
+      .select('full_name, username')
+      .eq('id', commenterId)
+      .single();
+
+    if (!commenterProfile) return false;
+
+    const commenterName = commenterProfile.full_name || commenterProfile.username;
+    const title = 'New Comment';
+    const message = `${commenterName} commented on your voice clip "${clipPhrase}"`;
+
+    return await createNotification(clipOwnerId, 'new_comment', title, message, {
+      clip_id: clipId,
+      commenter_id: commenterId,
+      commenter_name: commenterName,
+      clip_phrase: clipPhrase,
+      comment_content: commentContent.substring(0, 100), // Truncate long comments
+    });
+  } catch (error) {
+    console.error('Error creating comment notification:', error);
+    return false;
+  }
+};
+
+/**
+ * Create a like notification
+ * @param likerId - ID of the user who liked
+ * @param targetOwnerId - ID of the content owner
+ * @param targetId - ID of the liked content
+ * @param targetType - Type of content (voice_clip or comment)
+ * @param targetContent - Content that was liked
+ * @returns Promise<boolean>
+ */
+export const createLikeNotification = async (
+  likerId: string,
+  targetOwnerId: string,
+  targetId: string,
+  targetType: 'voice_clip' | 'comment',
+  targetContent: string
+): Promise<boolean> => {
+  try {
+    // Don't notify if liking own content
+    if (likerId === targetOwnerId) return true;
+
+    // Get liker's profile info
+    const { data: likerProfile } = await supabase
+      .from('profiles')
+      .select('full_name, username')
+      .eq('id', likerId)
+      .single();
+
+    if (!likerProfile) return false;
+
+    const likerName = likerProfile.full_name || likerProfile.username;
+    const title = targetType === 'voice_clip' ? 'New Like' : 'Comment Liked';
+    const message = targetType === 'voice_clip'
+      ? `${likerName} liked your voice clip "${targetContent}"`
+      : `${likerName} liked your comment "${targetContent.substring(0, 50)}..."`;
+
+    return await createNotification(targetOwnerId, 'new_like', title, message, {
+      target_id: targetId,
+      target_type: targetType,
+      liker_id: likerId,
+      liker_name: likerName,
+      target_content: targetContent,
+    });
+  } catch (error) {
+    console.error('Error creating like notification:', error);
     return false;
   }
 };

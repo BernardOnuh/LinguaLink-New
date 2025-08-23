@@ -231,12 +231,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // If email confirmation is enabled, session may be null here. We will
       // only attempt to update profile fields when we have a session.
       const userId = data.user?.id;
-      
+
       // Create welcome notification for new user
       if (userId) {
         await createWelcomeNotification(userId);
       }
-      
+
       // The trigger will attempt to populate profile from metadata.
       return null;
     } finally {
