@@ -33,6 +33,8 @@ import { SuggestedUsers } from '../components/SuggestedUsers';
 import { ValidationForm } from '../components/ValidationForm';
 import { NotificationBadge } from '../components/NotificationBadge';
 import { NotificationCenter } from '../components/NotificationCenter';
+import { VoiceClipInteractions } from '../components/VoiceClipInteractions';
+import { CommentsSection } from '../components/CommentsSection';
 import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
@@ -71,6 +73,8 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [selectedClipForComments, setSelectedClipForComments] = useState<VoiceClipWithUser | null>(null);
 
   useEffect(() => {
     loadClips();
@@ -116,6 +120,11 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
     setShowValidationModal(true);
   };
 
+  const handleCommentPress = (clip: VoiceClipWithUser) => {
+    setSelectedClipForComments(clip);
+    setShowCommentsModal(true);
+  };
+
   const handleValidationComplete = () => {
     setShowValidationModal(false);
     setSelectedClip(null);
@@ -139,7 +148,7 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
   const renderClip = ({ item: clip }: { item: VoiceClipWithUser }) => (
     <View style={styles.clipCard}>
       <View style={styles.clipHeader}>
-        <TouchableOpacity
+                <TouchableOpacity
           style={styles.userInfo}
           onPress={() => navigation.navigate('UserProfile', {
             user: {
@@ -160,8 +169,8 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
               />
             ) : (
               <Text style={styles.avatarEmoji}>{clip.user.avatar_url || '👤'}</Text>
-            )}
-          </View>
+              )}
+            </View>
           <View style={styles.userDetails}>
             <Text style={styles.userName}>{clip.user.full_name || clip.user.username}</Text>
             <Text style={styles.userUsername}>@{clip.user.username}</Text>
@@ -180,47 +189,24 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.language}>{clip.language}</Text>
           {clip.dialect && <Text style={styles.dialect}>({clip.dialect})</Text>}
           <Text style={styles.duration}>{clip.duration}s</Text>
+              </View>
+            </View>
+
+      {clip.is_validated && (
+        <View style={styles.validatedBadge}>
+          <Ionicons name="shield-checkmark" size={14} color="#10B981" />
+          <Text style={styles.validatedText}>Validated</Text>
         </View>
-      </View>
+      )}
 
-      <View style={styles.clipStats}>
-        <View style={styles.statItem}>
-          <Ionicons name="heart-outline" size={16} color="#6B7280" />
-          <Text style={styles.statText}>{clip.likes_count}</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Ionicons name="chatbubble-outline" size={16} color="#6B7280" />
-          <Text style={styles.statText}>{clip.comments_count}</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-          <Text style={styles.statText}>{clip.validations_count}</Text>
-        </View>
-        {clip.is_validated && (
-          <View style={styles.validatedBadge}>
-            <Ionicons name="shield-checkmark" size={14} color="#10B981" />
-            <Text style={styles.validatedText}>Validated</Text>
-          </View>
-        )}
-      </View>
+      <VoiceClipInteractions
+        clipId={clip.id}
+        onCommentPress={() => handleCommentPress(clip)}
+        showCommentButton={true}
+      />
 
-      <View style={styles.clipActions}>
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="heart-outline" size={20} color="#6B7280" />
-          <Text style={styles.actionText}>Like</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="chatbubble-outline" size={20} color="#6B7280" />
-          <Text style={styles.actionText}>Comment</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="share-outline" size={20} color="#6B7280" />
-          <Text style={styles.actionText}>Share</Text>
-        </TouchableOpacity>
-
-        {activeTab === 'Validate' && (
+      {activeTab === 'Validate' && (
+        <View style={styles.validateContainer}>
           <TouchableOpacity
             style={[styles.actionButton, styles.validateButton]}
             onPress={() => handleValidationPress(clip)}
@@ -228,8 +214,8 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
             <Ionicons name="checkmark-circle-outline" size={20} color="#3B82F6" />
             <Text style={[styles.actionText, styles.validateText]}>Validate</Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
     </View>
   );
 
@@ -331,8 +317,8 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FF8A00" />
           <Text style={styles.loadingText}>Loading content...</Text>
-        </View>
-      ) : (
+          </View>
+        ) : (
         <FlatList
           data={clips}
           renderItem={renderClip}
@@ -364,19 +350,36 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Notification Center */}
-      <NotificationCenter
-        visible={showNotificationCenter}
-        onClose={() => setShowNotificationCenter(false)}
-        onNotificationPress={(notification) => {
-          // Handle notification press - navigate to relevant screen
-          console.log('Notification pressed:', notification);
-          setShowNotificationCenter(false);
-        }}
-      />
-    </SafeAreaView>
-  );
-};
+              {/* Notification Center */}
+        <NotificationCenter
+          visible={showNotificationCenter}
+          onClose={() => setShowNotificationCenter(false)}
+          onNotificationPress={(notification) => {
+            // Handle notification press - navigate to relevant screen
+            console.log('Notification pressed:', notification);
+            setShowNotificationCenter(false);
+          }}
+        />
+
+        {/* Comments Modal */}
+        <Modal
+          visible={showCommentsModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+        >
+          {selectedClipForComments && (
+            <CommentsSection
+              clipId={selectedClipForComments.id}
+              onClose={() => {
+                setShowCommentsModal(false);
+                setSelectedClipForComments(null);
+              }}
+            />
+          )}
+        </Modal>
+      </SafeAreaView>
+    );
+  };
 
 const styles = StyleSheet.create({
   container: {
@@ -561,23 +564,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
   },
-  clipStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
+
   validatedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -617,6 +604,11 @@ const styles = StyleSheet.create({
   },
   validateText: {
     color: '#3B82F6',
+  },
+  validateContainer: {
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
   },
   emptyState: {
     alignItems: 'center',

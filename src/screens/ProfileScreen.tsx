@@ -149,8 +149,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           username: data.username || 'user',
           avatar: data.avatar_url || '👤',
           language: data.primary_language || 'English',
-          isVerified: false,
-          isOnline: true,
+    isVerified: false,
+    isOnline: true,
           bio: data.bio,
           location: data.location,
           email: data.email,
@@ -196,7 +196,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         // Transform database data to match our interface
         const transformedClips: VoiceClip[] = data.map(clip => ({
           id: clip.id,
-          type: 'voice',
+    type: 'voice',
           user: userProfile!, // We know userProfile exists when this runs
           phrase: clip.phrase,
           translation: clip.translation || '',
@@ -225,31 +225,31 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       // Mock badges for now - can be replaced with actual badges table later
-      const mockBadges: Badge[] = [
-        {
-          id: '1',
-          title: 'Language Pioneer',
-          description: 'Welcome to LinguaLink! Ready to preserve languages.',
-          icon: 'sparkles',
-          color: '#FF8A00',
-          earned: true,
-          date: 'Today'
-        },
-        {
-          id: '2',
-          title: 'First Recording',
-          description: 'You made your first voice recording!',
-          icon: 'mic',
-          color: '#10B981',
+const mockBadges: Badge[] = [
+  {
+    id: '1',
+    title: 'Language Pioneer',
+    description: 'Welcome to LinguaLink! Ready to preserve languages.',
+    icon: 'sparkles',
+    color: '#FF8A00',
+    earned: true,
+    date: 'Today'
+  },
+  {
+    id: '2',
+    title: 'First Recording',
+    description: 'You made your first voice recording!',
+    icon: 'mic',
+    color: '#10B981',
           earned: false
-        },
-        {
-          id: '3',
-          title: 'Community Helper',
-          description: 'You validated 10+ recordings',
-          icon: 'checkmark-circle',
-          color: '#3B82F6',
-          earned: false
+  },
+  {
+    id: '3',
+    title: 'Community Helper',
+    description: 'You validated 10+ recordings',
+    icon: 'checkmark-circle',
+    color: '#3B82F6',
+    earned: false
         }
       ];
       setBadges(mockBadges);
@@ -520,7 +520,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     <View key={clip.id} style={styles.clipCard}>
       <View style={styles.clipHeader}>
         <View style={styles.clipHeaderLeft}>
-          <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+        <Text style={styles.clipPhrase}>{clip.phrase}</Text>
           {clip.isValidated && (
             <View style={styles.validationBadge}>
               <Ionicons name="checkmark-circle" size={14} color="#10B981" />
@@ -737,24 +737,24 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
             {/* Follow Stats */}
             <View style={styles.followStatsContainer}>
-                             <TouchableOpacity
-                 style={styles.followStatItem}
-                 onPress={() => setShowFollowersModal(true)}
-               >
+              <TouchableOpacity
+                style={styles.followStatItem}
+                onPress={() => setShowFollowersModal(true)}
+              >
                  <Text style={styles.followStatNumber}>{followerCounts.followers_count}</Text>
-                 <Text style={styles.followStatLabel}>Followers</Text>
-                 {mutualFollowsCount > 0 && (
-                   <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
-                 )}
-               </TouchableOpacity>
+                <Text style={styles.followStatLabel}>Followers</Text>
+                {mutualFollowsCount > 0 && (
+                  <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
+                )}
+              </TouchableOpacity>
 
-               <TouchableOpacity
-                 style={styles.followStatItem}
-                 onPress={() => setShowFollowingModal(true)}
-               >
+              <TouchableOpacity
+                style={styles.followStatItem}
+                onPress={() => setShowFollowingModal(true)}
+              >
                  <Text style={styles.followStatNumber}>{followerCounts.following_count}</Text>
-                 <Text style={styles.followStatLabel}>Following</Text>
-               </TouchableOpacity>
+                <Text style={styles.followStatLabel}>Following</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
