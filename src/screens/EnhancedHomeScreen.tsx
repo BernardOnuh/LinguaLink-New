@@ -31,6 +31,8 @@ import {
 } from '../utils/content';
 import { SuggestedUsers } from '../components/SuggestedUsers';
 import { ValidationForm } from '../components/ValidationForm';
+import { NotificationBadge } from '../components/NotificationBadge';
+import { NotificationCenter } from '../components/NotificationCenter';
 import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
@@ -68,6 +70,7 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
   const [selectedClip, setSelectedClip] = useState<VoiceClipWithUser | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [showNotificationCenter, setShowNotificationCenter] = useState(false);
 
   useEffect(() => {
     loadClips();
@@ -276,6 +279,10 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
             >
               <Ionicons name="search" size={24} color="#FFFFFF" />
             </TouchableOpacity>
+            <NotificationBadge
+              onPress={() => setShowNotificationCenter(true)}
+              size="medium"
+            />
             <TouchableOpacity
               style={styles.headerButton}
               onPress={() => navigation.navigate('RecordVoice')}
@@ -356,6 +363,17 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
           )}
         </View>
       </Modal>
+
+      {/* Notification Center */}
+      <NotificationCenter
+        visible={showNotificationCenter}
+        onClose={() => setShowNotificationCenter(false)}
+        onNotificationPress={(notification) => {
+          // Handle notification press - navigate to relevant screen
+          console.log('Notification pressed:', notification);
+          setShowNotificationCenter(false);
+        }}
+      />
     </SafeAreaView>
   );
 };

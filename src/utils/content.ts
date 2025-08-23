@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { createValidationNotification, createClipValidatedNotification } from './notifications';
 
 export interface VoiceClipWithUser {
   id: string;
@@ -288,6 +289,15 @@ export const submitValidation = async (
     const currentUserId = (await supabase.auth.getUser()).data.user?.id;
     if (!currentUserId) return false;
 
+    // Get clip details for notification
+    const { data: clipData } = await supabase
+      .from('voice_clips')
+      .select('user_id, phrase')
+      .eq('id', clipId)
+      .single();
+
+    if (!clipData) return false;
+
     // Check if user has already validated this clip with this type
     const { data: existingValidation } = await supabase
       .from('validations')
@@ -330,6 +340,36 @@ export const submitValidation = async (
         console.error('Error creating validation:', error);
         return false;
       }
+
+      // Create notification for the clip owner (only for new validations)
+      await createValidationNotification(
+        currentUserId,
+        clipData.user_id,
+        clipId,
+        clipData.phrase
+      );
+    }
+
+    // Check if clip should be marked as validated (e.g., 3+ positive validations)
+    const { data: validationStats } = await supabase
+      .from('voice_clip_validation_stats')
+      .select('approved_validations, total_validations')
+      .eq('voice_clip_id', clipId)
+      .single();
+
+    if (validationStats && validationStats.approved_validations >= 3 && validationStats.total_validations >= 3) {
+      // Mark clip as validated
+      await supabase
+        .from('voice_clips')
+        .update({ is_validated: true })
+        .eq('id', clipId);
+
+      // Create clip validated notification
+      await createClipValidatedNotification(
+        clipData.user_id,
+        clipId,
+        clipData.phrase
+      );
     }
 
     return true;
