@@ -22,6 +22,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
+import { getPlayableAudioUrl } from '../utils/storage';
 import {
   getFollowerCounts,
   getFollowers,
@@ -390,10 +391,19 @@ const mockBadges: Badge[] = [
         return;
       }
 
-      console.log('Playing audio file:', audioUrl);
+      // Resolve storage path to a playable URL if needed
+      const resolvedUrl = await getPlayableAudioUrl(audioUrl);
+      if (!resolvedUrl) {
+        console.log('Failed to resolve playable URL from:', audioUrl);
+        Alert.alert('Error', 'Unable to access audio file.');
+        setIsLoadingAudio(null);
+        return;
+      }
+
+      console.log('Playing audio file:', resolvedUrl);
 
       const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
+        { uri: resolvedUrl },
         { shouldPlay: true }
       );
 

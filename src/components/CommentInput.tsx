@@ -114,17 +114,28 @@ export const CommentInput: React.FC<CommentInputProps> = ({
         // Get recording duration
         const { sound } = await Audio.Sound.createAsync({ uri });
         const status = await sound.getStatusAsync();
-        const duration = status.durationMillis ? Math.round(status.durationMillis / 1000) : 0;
+        let duration = 0;
+        if ('isLoaded' in status && status.isLoaded) {
+          duration = status.durationMillis ? Math.round(status.durationMillis / 1000) : 0;
+        }
         await sound.unloadAsync();
 
         setAudioDuration(duration);
 
         // Upload audio file
-        const uploadedUrl = await uploadAudioFile(uri, `comments/${Date.now()}.m4a`);
-        if (uploadedUrl) {
-          setAudioUrl(uploadedUrl);
+        if (!authUser?.id) {
+          Alert.alert('Error', 'You must be signed in to upload audio');
+          return;
+        }
+        const uploadResult = await uploadAudioFile(
+          uri,
+          authUser.id,
+          `comments_${Date.now()}.m4a`
+        );
+        if (uploadResult.success && uploadResult.url) {
+          setAudioUrl(uploadResult.url);
         } else {
-          Alert.alert('Error', 'Failed to upload audio');
+          Alert.alert('Error', uploadResult.error || 'Failed to upload audio');
         }
       }
     } catch (error) {
