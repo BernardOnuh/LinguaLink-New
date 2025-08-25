@@ -89,6 +89,51 @@ export const uploadAudioFile = async (
 };
 
 /**
+ * Resolve a stored audio URL or storage path to a playable URL.
+ * If given a full http(s) URL, it is returned as-is. If given a storage path,
+ * we attempt to generate a public URL from the `voice-clips` bucket.
+ * For private buckets, switch to createSignedUrl with an expiry as needed.
+ */
+export const getPlayableAudioUrl = async (
+  storedUrlOrPath: string,
+  expiresInSeconds: number = 60 * 60
+): Promise<string | null> => {
+  try {
+    if (!storedUrlOrPath) return null;
+
+    // If it's already a full URL, return as-is
+    if (/^https?:\/\//i.test(storedUrlOrPath)) {
+      return storedUrlOrPath;
+    }
+
+    // Otherwise, treat it as a storage path in the `voice-clips` bucket
+    // By default, we try public URL. If the bucket is private, prefer signed URL.
+    const { data: publicData } = supabase.storage
+      .from('voice-clips')
+      .getPublicUrl(storedUrlOrPath);
+
+    if (publicData?.publicUrl) {
+      return publicData.publicUrl;
+    }
+
+    // Fallback to signed URL (in case the bucket is private)
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from('voice-clips')
+      .createSignedUrl(storedUrlOrPath, expiresInSeconds);
+
+    if (signedError) {
+      console.error('Error generating signed URL:', signedError);
+      return null;
+    }
+
+    return signedData?.signedUrl || null;
+  } catch (error) {
+    console.error('Error resolving playable audio URL:', error);
+    return null;
+  }
+};
+
+/**
  * Delete an audio file from Supabase Storage
  * @param filePath - Storage path of the file to delete
  * @returns Promise<boolean>

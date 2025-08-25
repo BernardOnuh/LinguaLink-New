@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { getPlayableAudioUrl } from '../utils/storage';
 import { Comment, toggleCommentLike, deleteComment } from '../utils/interactions';
 import { useAuth } from '../context/AuthProvider';
 
@@ -47,6 +49,9 @@ export const CommentItem: React.FC<CommentItemProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [localLikesCount, setLocalLikesCount] = useState(comment.likes_count);
   const [localIsLiked, setLocalIsLiked] = useState(comment.is_liked_by_current_user);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
   const isOwnComment = authUser?.id === comment.user_id;
 
@@ -109,6 +114,41 @@ export const CommentItem: React.FC<CommentItemProps> = ({
     onReply?.(comment);
   };
 
+  const togglePlay = async () => {
+    try {
+      if (!comment.audio_url) return;
+      if (isPlaying) {
+        if (sound) {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+        }
+        setSound(null);
+        setIsPlaying(false);
+        return;
+      }
+      setIsLoadingAudio(true);
+      const resolvedUrl = await getPlayableAudioUrl(comment.audio_url);
+      if (!resolvedUrl) {
+        setIsLoadingAudio(false);
+        return;
+      }
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: resolvedUrl },
+        { shouldPlay: true }
+      );
+      setSound(newSound);
+      setIsPlaying(true);
+      setIsLoadingAudio(false);
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
+          setIsPlaying(false);
+        }
+      });
+    } catch (e) {
+      setIsLoadingAudio(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.commentHeader}>
@@ -143,12 +183,16 @@ export const CommentItem: React.FC<CommentItemProps> = ({
       <View style={styles.commentContent}>
         <Text style={styles.commentText}>{comment.content}</Text>
         {comment.audio_url && (
-          <View style={styles.audioContainer}>
-            <Ionicons name="play-circle" size={20} color="#3B82F6" />
+          <TouchableOpacity style={styles.audioContainer} onPress={togglePlay}>
+            {isLoadingAudio ? (
+              <ActivityIndicator size="small" color="#3B82F6" />
+            ) : (
+              <Ionicons name={isPlaying ? 'pause-circle' : 'play-circle'} size={20} color="#3B82F6" />
+            )}
             <Text style={styles.audioDuration}>
               {comment.audio_duration ? `${comment.audio_duration}s` : 'Voice comment'}
             </Text>
-          </View>
+          </TouchableOpacity>
         )}
       </View>
 

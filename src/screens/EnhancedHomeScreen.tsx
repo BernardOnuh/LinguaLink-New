@@ -18,6 +18,8 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { getPlayableAudioUrl } from '../utils/storage';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -75,6 +77,9 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [selectedClipForComments, setSelectedClipForComments] = useState<VoiceClipWithUser | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
 
   useEffect(() => {
     loadClips();
@@ -145,6 +150,51 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
+  const playAudio = async (clipId: string, audioUrl?: string | null) => {
+    try {
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+      }
+      setIsLoadingAudio(clipId);
+      setIsPlaying(null);
+      if (!audioUrl) {
+        setIsLoadingAudio(null);
+        return;
+      }
+      const resolvedUrl = await getPlayableAudioUrl(audioUrl);
+      if (!resolvedUrl) {
+        setIsLoadingAudio(null);
+        return;
+      }
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: resolvedUrl },
+        { shouldPlay: true }
+      );
+      setSound(newSound);
+      setIsPlaying(clipId);
+      setIsLoadingAudio(null);
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
+          setIsPlaying(null);
+        }
+      });
+    } catch (e) {
+      setIsLoadingAudio(null);
+    }
+  };
+
+  const stopAudio = async () => {
+    try {
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+      }
+      setSound(null);
+      setIsPlaying(null);
+    } catch {}
+  };
+
   const renderClip = ({ item: clip }: { item: VoiceClipWithUser }) => (
     <View style={styles.clipCard}>
       <View style={styles.clipHeader}>
@@ -182,6 +232,39 @@ const EnhancedHomeScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.clipContent}>
         <Text style={styles.phrase}>{clip.phrase}</Text>
         <Text style={styles.translation}>{clip.translation}</Text>
+
+        {/* Audio Playback Section - matching Profile screen */}
+        <View style={styles.audioSection}>
+          <TouchableOpacity
+            style={[styles.playButton, !clip.audio_url && styles.disabledPlayButton]}
+            onPress={() => {
+              if (isPlaying === clip.id) {
+                stopAudio();
+              } else {
+                playAudio(clip.id, clip.audio_url);
+              }
+            }}
+            disabled={isLoadingAudio === clip.id || !clip.audio_url}
+          >
+            {isLoadingAudio === clip.id ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : isPlaying === clip.id ? (
+              <Ionicons name="pause" size={20} color="#FFFFFF" />
+            ) : (
+              <Ionicons name="play" size={20} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.audioInfo}>
+            <Text style={styles.audioDuration}>
+              {getTimeAgo(clip.created_at)} • {clip.duration}s • {clip.language}
+              {clip.dialect && ` (${clip.dialect})`}
+            </Text>
+            {isPlaying === clip.id && (
+              <Text style={styles.playingText}>Playing...</Text>
+            )}
+          </View>
+        </View>
 
         {renderWaveform(clip.duration)}
 
@@ -546,6 +629,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 1,
     borderRadius: 2,
   },
+  playButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF8A00',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  disabledPlayButton: {
+    backgroundColor: '#D1D5DB',
+  },
   clipMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -648,6 +742,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  audioSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 8,
+  },
+  audioInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  audioDuration: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  playingText: {
+    fontSize: 12,
+    color: '#FF8A00',
+    fontWeight: '500',
   },
 });
 
