@@ -66,7 +66,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithGoogle: AuthContextValue['signInWithGoogle'] = async () => {
     setLoading(true);
     try {
-      // Create redirect URI for OAuth - handle development vs production
+      // Create redirect URI for OAuth/email callbacks (Expo Go & dev builds)
+      // Route mapped in App.tsx as AuthCallback → 'auth-callback'
       const redirectUri = AuthSession.makeRedirectUri({
         scheme: 'lingualink',
         path: 'auth-callback',
@@ -214,6 +215,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (checkErr) return checkErr.message;
       if (existing) return 'Username is already taken';
 
+      // Compute redirect for email confirmation links (works in Expo Go)
+      const emailRedirectTo = AuthSession.makeRedirectUri({
+        scheme: 'lingualink',
+        path: 'auth-callback',
+      });
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -223,7 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             username,
             primary_language: primaryLanguage,
           },
-          emailRedirectTo: 'lingualink://auth-callback',
+          emailRedirectTo,
         },
       });
       if (error) return error.message;

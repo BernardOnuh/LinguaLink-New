@@ -98,6 +98,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
