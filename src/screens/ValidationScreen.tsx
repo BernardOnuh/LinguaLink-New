@@ -1,4 +1,3 @@
-// src/screens/ValidationScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -54,12 +53,12 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
   const handleValidation = (isCorrect: boolean) => {
     setValidationResult(isCorrect ? 'correct' : 'incorrect');
     setHasValidated(true);
-    
+
     const points = isCorrect ? 10 : 5; // Points for validation
-    const message = isCorrect 
+    const message = isCorrect
       ? `Great! You've confirmed this pronunciation is correct. +${points} points earned!`
       : `Thank you for the feedback. This helps the community learn. +${points} points earned!`;
-    
+
     Alert.alert('Validation Submitted', message);
   };
 
@@ -102,7 +101,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -162,7 +161,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
 
         {!hasValidated ? (
           <View style={styles.validationButtons}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.validationButton, styles.correctButton]}
               onPress={() => handleValidation(true)}
             >
@@ -170,7 +169,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.validationButtonText}>Yes, Correct</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.validationButton, styles.incorrectButton]}
               onPress={() => handleValidation(false)}
             >
@@ -184,7 +183,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
               styles.resultCard,
               validationResult === 'correct' ? styles.correctResult : styles.incorrectResult
             ]}>
-              <Ionicons 
+              <Ionicons
                 name={validationResult === 'correct' ? "checkmark-circle" : "close-circle"}
                 size={32}
                 color={validationResult === 'correct' ? "#10B981" : "#EF4444"}
@@ -193,14 +192,14 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
                 {validationResult === 'correct' ? 'Marked as Correct!' : 'Marked as Needs Work'}
               </Text>
               <Text style={styles.resultDescription}>
-                {validationResult === 'correct' 
+                {validationResult === 'correct'
                   ? 'Your validation helps confirm accurate pronunciations.'
                   : 'Your feedback helps the community improve their pronunciation.'
                 }
               </Text>
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.nextButton}
               onPress={handleNext}
             >

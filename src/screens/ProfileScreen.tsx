@@ -1,3 +1,4 @@
+// src/screens/ProfileScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -8,13 +9,10 @@ import {
   ScrollView,
   StatusBar,
   Dimensions,
-  Modal,
-  Image,
   ActivityIndicator,
-  Alert,
   RefreshControl,
+  Image,
 } from 'react-native';
-import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -22,32 +20,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
-import { getPlayableAudioUrl } from '../utils/storage';
-import {
-  getFollowerCounts,
-  getFollowers,
-  getFollowing,
-  followUser,
-  unfollowUser,
-  isFollowingUser
-} from '../utils/social';
-import { SocialUserProfile } from '../../types/navigation';
 
 const { width, height } = Dimensions.get('window');
-
-// Helper function to format time ago
-const getTimeAgo = (dateString: string): string => {
-  const now = new Date();
-  const date = new Date(dateString);
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return 'Just now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
-  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
-  return `${Math.floor(diffInSeconds / 31536000)}y ago`;
-};
 
 type ProfileScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Profile'>,
@@ -58,76 +32,53 @@ interface Props {
   navigation: ProfileScreenNavigationProp;
 }
 
-interface User {
-  id: string;
-  name: string;
-  username: string;
-  avatar: string;
-  language: string;
-  isVerified: boolean;
-  isOnline: boolean;
-  bio?: string;
-  location?: string;
-  joinedDate?: string;
-  email?: string;
-  website?: string;
-}
-
 interface VoiceClip {
   id: string;
-  type: 'voice';
-  user: User;
   phrase: string;
-  translation: string;
-  audioWaveform: number[];
-  audio_url?: string;
+  language: string;
   likes: number;
   comments: number;
-  shares: number;
   validations: number;
-  needsValidation: boolean;
   timeAgo: string;
-  isValidated: boolean;
-  userLanguages: string[];
-  duration: number;
 }
 
-interface Badge {
+interface UserProfile {
   id: string;
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  earned: boolean;
-  date?: string;
+  full_name: string;
+  username: string;
+  primary_language: string;
+  avatar_url?: string;
+  bio?: string;
+  location?: string;
+  created_at: string;
 }
 
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const { user: authUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'Clips' | 'Badges' | 'Rewards'>('Clips');
-  const [showFollowingModal, setShowFollowingModal] = useState(false);
-  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'My Clips' | 'Badges' | 'Rewards'>('My Clips');
 
-  // Data states
-  const [userProfile, setUserProfile] = useState<User | null>(null);
+  // State for real data
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>([]);
-  const [badges, setBadges] = useState<Badge[]>([]);
-  const [following, setFollowing] = useState<SocialUserProfile[]>([]);
-  const [followers, setFollowers] = useState<SocialUserProfile[]>([]);
-  const [followerCounts, setFollowerCounts] = useState({ followers_count: 0, following_count: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Audio playback state
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [isPlaying, setIsPlaying] = useState<string | null>(null);
-  const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
+  // Helper function to format time ago
+  const getTimeAgo = (dateString: string): string => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  const [isFollowing, setIsFollowing] = useState<Record<string, boolean>>({});
-  const [followLoading, setFollowLoading] = useState<Record<string, boolean>>({});
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
+    return `${Math.floor(diffInSeconds / 31536000)}y ago`;
+  };
 
-  // Data fetching functions
+  // Fetch user profile from database
   const fetchUserProfile = async () => {
     if (!authUser?.id) return;
 
@@ -138,26 +89,18 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         .eq('id', authUser.id)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // If profile doesn't exist, create one with auth user data
+        if (error.code === 'PGRST116') {
+          console.log('Profile not found, creating new profile...');
+          await createUserProfile();
+          return;
+        }
+        throw error;
+      }
 
       if (data) {
-        console.log('Fetched profile data:', data);
-        console.log('Avatar URL:', data.avatar_url);
-
-        setUserProfile({
-          id: data.id,
-          name: data.full_name || 'User',
-          username: data.username || 'user',
-          avatar: data.avatar_url || '👤',
-          language: data.primary_language || 'English',
-    isVerified: false,
-    isOnline: true,
-          bio: data.bio,
-          location: data.location,
-          email: data.email,
-          website: data.website,
-          joinedDate: data.created_at ? `Joined ${new Date(data.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : undefined,
-        });
+        setUserProfile(data);
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -165,6 +108,38 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Create user profile if it doesn't exist
+  const createUserProfile = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: authUser.id,
+          email: authUser.email,
+          full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || 'User',
+          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'user',
+          primary_language: authUser.user_metadata?.primary_language || 'English',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        console.log('Profile created successfully:', data);
+        setUserProfile(data);
+      }
+    } catch (error) {
+      console.error('Error creating user profile:', error);
+      setError('Failed to create profile');
+    }
+  };
+
+  // Fetch user's voice clips from database
   const fetchVoiceClips = async () => {
     if (!authUser?.id) return;
 
@@ -174,15 +149,11 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         .select(`
           id,
           phrase,
-          translation,
-          audio_url,
           language,
           dialect,
-          duration,
           likes_count,
           comments_count,
           validations_count,
-          is_validated,
           created_at
         `)
         .eq('user_id', authUser.id)
@@ -191,27 +162,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       if (error) throw error;
 
       if (data) {
-        console.log('Fetched voice clips:', data.length);
-        console.log('Raw voice clips data:', data);
-
         // Transform database data to match our interface
         const transformedClips: VoiceClip[] = data.map(clip => ({
           id: clip.id,
-    type: 'voice',
-          user: userProfile!, // We know userProfile exists when this runs
           phrase: clip.phrase,
-          translation: clip.translation || '',
-          audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70], // Mock waveform for now
-          audio_url: clip.audio_url || undefined,
-          likes: clip.likes_count,
-          comments: clip.comments_count,
-          shares: 0, // Not implemented yet
-          validations: clip.validations_count,
-          needsValidation: !clip.is_validated,
-          timeAgo: getTimeAgo(clip.created_at),
-          isValidated: clip.is_validated,
-          userLanguages: [clip.language || 'Unknown'],
-          duration: clip.duration || 0 // Add duration from database
+          language: clip.dialect ? `${clip.language} / ${clip.dialect}` : clip.language || 'Unknown',
+          likes: clip.likes_count || 0,
+          comments: clip.comments_count || 0,
+          validations: clip.validations_count || 0,
+          timeAgo: getTimeAgo(clip.created_at)
         }));
 
         setVoiceClips(transformedClips);
@@ -221,101 +180,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const fetchBadges = async () => {
-    if (!authUser?.id) return;
-
-    try {
-      // Mock badges for now - can be replaced with actual badges table later
-const mockBadges: Badge[] = [
-  {
-    id: '1',
-    title: 'Language Pioneer',
-    description: 'Welcome to LinguaLink! Ready to preserve languages.',
-    icon: 'sparkles',
-    color: '#FF8A00',
-    earned: true,
-    date: 'Today'
-  },
-  {
-    id: '2',
-    title: 'First Recording',
-    description: 'You made your first voice recording!',
-    icon: 'mic',
-    color: '#10B981',
-          earned: false
-  },
-  {
-    id: '3',
-    title: 'Community Helper',
-    description: 'You validated 10+ recordings',
-    icon: 'checkmark-circle',
-    color: '#3B82F6',
-    earned: false
-        }
-      ];
-      setBadges(mockBadges);
-    } catch (error) {
-      console.error('Error fetching badges:', error);
-    }
-  };
-
-  const fetchFollowing = async () => {
-    if (!authUser?.id) return;
-
-    try {
-      const followingData = await getFollowing(authUser.id);
-      setFollowing(followingData);
-
-      // Update follow status for each user
-      const followStatus: Record<string, boolean> = {};
-      for (const user of followingData) {
-        followStatus[user.id] = true;
-      }
-      setIsFollowing(followStatus);
-    } catch (error) {
-      console.error('Error fetching following:', error);
-    }
-  };
-
-  const fetchFollowers = async () => {
-    if (!authUser?.id) return;
-
-    try {
-      const followersData = await getFollowers(authUser.id);
-      setFollowers(followersData);
-    } catch (error) {
-      console.error('Error fetching followers:', error);
-    }
-  };
-
-  const fetchFollowerCounts = async () => {
-    if (!authUser?.id) return;
-
-    try {
-      const counts = await getFollowerCounts(authUser.id);
-      if (counts) {
-        setFollowerCounts(counts);
-      }
-    } catch (error) {
-      console.error('Error fetching follower counts:', error);
-    }
-  };
-
+  // Load all profile data
   const loadProfileData = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // First fetch user profile
-      await fetchUserProfile();
-
-      // Then fetch other data that depends on user profile
       await Promise.all([
-        fetchVoiceClips(),
-        fetchBadges(),
-        fetchFollowerCounts(),
-        fetchFollowing(),
-        fetchFollowers(),
+        fetchUserProfile(),
+        fetchVoiceClips()
       ]);
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -325,272 +198,31 @@ const mockBadges: Badge[] = [
     }
   };
 
+  // Refresh data
   const onRefresh = async () => {
     setRefreshing(true);
     await loadProfileData();
     setRefreshing(false);
   };
 
+  // Load data when component mounts
   useEffect(() => {
     if (authUser?.id) {
       loadProfileData();
     }
   }, [authUser?.id]);
 
-  const toggleFollow = async (userId: string) => {
-    if (followLoading[userId]) return;
-
-    setFollowLoading(prev => ({ ...prev, [userId]: true }));
-
-    try {
-      if (isFollowing[userId]) {
-        // Unfollow
-        const success = await unfollowUser(userId);
-        if (success) {
-          setIsFollowing(prev => ({ ...prev, [userId]: false }));
-          // Refresh follower counts
-          await fetchFollowerCounts();
-        }
-      } else {
-        // Follow
-        const success = await followUser(userId);
-        if (success) {
-          setIsFollowing(prev => ({ ...prev, [userId]: true }));
-          // Refresh follower counts
-          await fetchFollowerCounts();
-        }
-      }
-    } catch (error) {
-      console.error('Error toggling follow:', error);
-    } finally {
-      setFollowLoading(prev => ({ ...prev, [userId]: false }));
-    }
-  };
-
-  const mutualFollowsCount = followers.filter(
-    (follower: SocialUserProfile) => isFollowing[follower.id]
-  ).length;
-
-  // Audio playback functions
-  const playAudio = async (clipId: string, audioUrl: string) => {
-    try {
-      // Stop any currently playing audio
-      if (sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-      }
-
-      setIsLoadingAudio(clipId);
-      setIsPlaying(null);
-
-      // Check if we have a valid audio URL
-      if (!audioUrl) {
-        console.log('No audio URL available');
-        Alert.alert('Error', 'No audio file available for this clip.');
-        setIsLoadingAudio(null);
-        return;
-      }
-
-      // Resolve storage path to a playable URL if needed
-      const resolvedUrl = await getPlayableAudioUrl(audioUrl);
-      if (!resolvedUrl) {
-        console.log('Failed to resolve playable URL from:', audioUrl);
-        Alert.alert('Error', 'Unable to access audio file.');
-        setIsLoadingAudio(null);
-        return;
-      }
-
-      console.log('Playing audio file:', resolvedUrl);
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: resolvedUrl },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
-      setIsPlaying(clipId);
-      setIsLoadingAudio(null);
-
-      // Set up audio status update listener
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setIsPlaying(null);
-        }
-      });
-
-    } catch (error) {
-      console.error('Error playing audio:', error);
-      Alert.alert('Error', 'Failed to play audio. Please try again.');
-      setIsLoadingAudio(null);
-    }
-  };
-
-  const stopAudio = async () => {
-    try {
-      if (sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-      }
-      setSound(null);
-      setIsPlaying(null);
-    } catch (error) {
-      console.error('Error stopping audio:', error);
-    }
-  };
-
-  // Cleanup audio on component unmount
-  useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
-    };
-  }, [sound]);
-
-  const renderWaveform = (waveform: number[]) => (
-    <View style={styles.waveformContainer}>
-      {waveform.map((height, index) => (
-        <View
-          key={index}
-          style={[
-            styles.waveformBar,
-            { height: height * 0.6 }
-          ]}
-        />
-      ))}
-    </View>
-  );
-
-  const renderUserItem = (user: SocialUserProfile) => (
-    <TouchableOpacity
-      key={user.id}
-      style={styles.userItem}
-      onPress={() => {
-        // Convert SocialUserProfile to Contact for navigation
-        const contactUser = {
-          id: user.id,
-          name: user.full_name || user.username,
-          username: user.username,
-          avatar: user.avatar_url || '👤',
-          language: user.primary_language || 'Unknown',
-          isOnline: false // Default to offline for now
-        };
-        navigation.navigate('UserProfile', { user: contactUser });
-      }}
-    >
-      <View style={styles.userAvatar}>
-        {user.avatar_url && user.avatar_url.startsWith('http') ? (
-          <Image
-            source={{ uri: user.avatar_url }}
-            style={styles.avatarImage}
-            onError={() => console.log('Failed to load user avatar image:', user.avatar_url)}
-          />
-        ) : (
-          <Text style={styles.userAvatarEmoji}>{user.avatar_url || '👤'}</Text>
-        )}
-        <View style={[
-          styles.onlineIndicator,
-          { backgroundColor: '#9CA3AF' } // Default to offline for now
-        ]} />
-      </View>
-      <View style={styles.userInfo}>
-        <View style={styles.userNameContainer}>
-          <Text style={styles.userName}>{user.full_name || user.username}</Text>
-          {/* Remove verified check for now since it's not in SocialUserProfile */}
-        </View>
-        <Text style={styles.userUsername}>@{user.username}</Text>
-        <View style={styles.userStats}>
-          <Text style={styles.userStat}>{user.primary_language || 'Unknown'}</Text>
-          {isFollowing[user.id] && (
-            <View style={styles.mutualFollowBadge}>
-              <Text style={styles.mutualFollowText}>Follows you</Text>
-            </View>
-          )}
-        </View>
-      </View>
-      <TouchableOpacity
-        style={[
-          styles.followButton,
-          isFollowing[user.id] && styles.followingButton
-        ]}
-        onPress={() => toggleFollow(user.id)}
-        disabled={followLoading[user.id]}
-      >
-        <Text style={[
-          styles.followButtonText,
-          isFollowing[user.id] && styles.followingButtonText
-        ]}>
-          {isFollowing[user.id] ? 'Following' : 'Follow'}
-        </Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-
   const renderVoiceClip = (clip: VoiceClip) => (
     <View key={clip.id} style={styles.clipCard}>
       <View style={styles.clipHeader}>
-        <View style={styles.clipHeaderLeft}>
         <Text style={styles.clipPhrase}>{clip.phrase}</Text>
-          {clip.isValidated && (
-            <View style={styles.validationBadge}>
-              <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-              <Text style={styles.validationText}>Validated</Text>
-            </View>
-          )}
-        </View>
         <Text style={styles.clipTime}>{clip.timeAgo}</Text>
       </View>
-      <Text style={styles.clipTranslation}>{clip.translation}</Text>
-
-      {/* Audio Playback Section */}
-      <View style={styles.audioSection}>
-                 <TouchableOpacity
-           style={[styles.playButton, !clip.audio_url && styles.disabledPlayButton]}
-           onPress={() => {
-             if (isPlaying === clip.id) {
-               stopAudio();
-             } else {
-               console.log('Attempting to play audio for clip:', clip.id);
-               console.log('Audio URL:', clip.audio_url);
-               if (clip.audio_url) {
-                 playAudio(clip.id, clip.audio_url);
-               }
-             }
-           }}
-           disabled={isLoadingAudio === clip.id || !clip.audio_url}
-         >
-          {isLoadingAudio === clip.id ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : isPlaying === clip.id ? (
-            <Ionicons name="pause" size={20} color="#FFFFFF" />
-          ) : (
-            <Ionicons name="play" size={20} color="#FFFFFF" />
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.audioInfo}>
-          <Text style={styles.audioDuration}>
-            {clip.timeAgo} • {clip.duration}s • {clip.userLanguages.join(', ')}
-          </Text>
-          {isPlaying === clip.id && (
-            <Text style={styles.playingText}>Playing...</Text>
-          )}
-        </View>
-      </View>
-
-      {renderWaveform(clip.audioWaveform)}
-
-      {/* Playing indicator */}
-      {isPlaying === clip.id && (
-        <View style={styles.playingIndicator}>
-          <View style={styles.playingDot} />
-          <Text style={styles.playingIndicatorText}>Now Playing</Text>
-        </View>
-      )}
+      <Text style={styles.clipLanguage}>{clip.language}</Text>
 
       <View style={styles.clipStats}>
         <View style={styles.statItem}>
-          <Ionicons name="heart" size={16} color="#EF4444" />
+          <Ionicons name="trophy" size={16} color="#FF8A00" />
           <Text style={styles.statText}>{clip.likes}</Text>
         </View>
         <View style={styles.statItem}>
@@ -601,72 +233,44 @@ const mockBadges: Badge[] = [
           <Ionicons name="checkmark-circle" size={16} color="#10B981" />
           <Text style={styles.statText}>{clip.validations}</Text>
         </View>
-        <View style={styles.statItem}>
-          <Ionicons name="share-social" size={16} color="#6B7280" />
-          <Text style={styles.statText}>{clip.shares}</Text>
-        </View>
       </View>
     </View>
   );
 
-  const renderBadge = (badge: Badge) => (
-    <View key={badge.id} style={styles.badgeCard}>
-      <View style={[styles.badgeIcon, { backgroundColor: `${badge.color}20` }]}>
-        <Ionicons
-          name={badge.icon as any}
-          size={24}
-          color={badge.color}
-        />
-        {!badge.earned && (
-          <View style={styles.lockIcon}>
-            <Ionicons name="lock-closed" size={12} color="#9CA3AF" />
-          </View>
-        )}
-      </View>
-      <View style={styles.badgeContent}>
-        <Text style={styles.badgeTitle}>{badge.title}</Text>
-        <Text style={styles.badgeDescription}>{badge.description}</Text>
-        {badge.earned && badge.date && (
-          <Text style={styles.badgeDate}>Earned {badge.date}</Text>
-        )}
-      </View>
-    </View>
-  );
-
+  // Show loading state
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
-          <Text style={styles.loadingText}>Loading profile...</Text>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>Profile</Text>
+          </View>
+        </View>
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color="#FF8A00" />
+          <Text style={[styles.emptyStateTitle, { marginTop: 16 }]}>Loading profile...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  // Show error state
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={48} color="#FFFFFF" />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadProfileData}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>Profile</Text>
+          </View>
         </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!userProfile) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-        <View style={styles.errorContainer}>
-          <Ionicons name="person-outline" size={48} color="#FFFFFF" />
-          <Text style={styles.errorText}>Profile not found</Text>
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Ionicons name="alert-circle-outline" size={64} color="#D1D5DB" />
+          <Text style={styles.emptyStateTitle}>{error}</Text>
+          <TouchableOpacity style={styles.recordButton} onPress={loadProfileData}>
+            <Text style={styles.recordButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -676,258 +280,153 @@ const mockBadges: Badge[] = [
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
 
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Profile Info */}
+        <View style={styles.profileInfo}>
+          <View style={styles.avatarContainer}>
+            <View style={styles.avatar}>
+              {userProfile?.avatar_url && userProfile.avatar_url.startsWith('http') ? (
+                <Image
+                  source={{ uri: userProfile.avatar_url }}
+                  style={styles.avatarImage}
+                  onError={() => console.log('Failed to load avatar image:', userProfile.avatar_url)}
+                />
+              ) : (
+                <Text style={styles.avatarText}>
+                  {userProfile?.username?.charAt(0)?.toUpperCase() || 'U'}
+                </Text>
+              )}
+            </View>
+          </View>
+          <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+          <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
+          <View style={styles.languageTag}>
+            <Text style={styles.languageText}>{userProfile?.primary_language || 'Unknown Language'}</Text>
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statLabel}>Validations</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{voiceClips.length}</Text>
+            <Text style={styles.statLabel}>Contributions</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statLabel}>Duets</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Tab Navigation */}
+      <View style={styles.tabContainer}>
+        {['My Clips', 'Badges', 'Rewards'].map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.tab,
+              activeTab === tab && styles.activeTab
+            ]}
+            onPress={() => setActiveTab(tab as typeof activeTab)}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === tab && styles.activeTabText
+            ]}>
+              {tab}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Content */}
       <ScrollView
-        style={styles.scrollContainer}
+        style={styles.content}
         showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[1]} // Make tabs sticky
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Profile</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-              <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Profile Info */}
-          <View style={styles.profileInfo}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                {userProfile.avatar && userProfile.avatar.startsWith('http') ? (
-                  <Image
-                    source={{ uri: userProfile.avatar }}
-                    style={styles.avatarImage}
-                    onError={() => console.log('Failed to load avatar image:', userProfile.avatar)}
-                  />
-                ) : (
-                  <Text style={styles.avatarEmoji}>{userProfile.avatar || '👤'}</Text>
-                )}
-                <View style={[
-                  styles.onlineIndicator,
-                  { backgroundColor: userProfile.isOnline ? '#10B981' : '#9CA3AF' }
-                ]} />
-              </View>
-            </View>
-
-            <View style={styles.profileNameContainer}>
-              <Text style={styles.profileName}>{userProfile.name}</Text>
-              {userProfile.isVerified && (
-                <Ionicons name="checkmark-circle" size={20} color="#3B82F6" style={styles.verifiedIcon} />
-              )}
-            </View>
-
-            <Text style={styles.profileUsername}>@{userProfile.username}</Text>
-
-            {userProfile.bio && (
-              <Text style={styles.profileBio}>{userProfile.bio}</Text>
-            )}
-
-            <View style={styles.profileDetails}>
-              {userProfile.location && (
-                <View style={styles.detailItem}>
-                  <Ionicons name="location-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.detailText}>{userProfile.location}</Text>
-                </View>
-              )}
-              {userProfile.joinedDate && (
-                <View style={styles.detailItem}>
-                  <Ionicons name="calendar-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.detailText}>{userProfile.joinedDate}</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.languageTag}>
-              <Text style={styles.languageText}>{userProfile.language}</Text>
-            </View>
-
-            {/* Follow Stats */}
-            <View style={styles.followStatsContainer}>
-              <TouchableOpacity
-                style={styles.followStatItem}
-                onPress={() => setShowFollowersModal(true)}
-              >
-                 <Text style={styles.followStatNumber}>{followerCounts.followers_count}</Text>
-                <Text style={styles.followStatLabel}>Followers</Text>
-                {mutualFollowsCount > 0 && (
-                  <Text style={styles.mutualStatText}>{mutualFollowsCount} mutual</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.followStatItem}
-                onPress={() => setShowFollowingModal(true)}
-              >
-                 <Text style={styles.followStatNumber}>{followerCounts.following_count}</Text>
-                <Text style={styles.followStatLabel}>Following</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Stats */}
-          <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>23</Text>
-              <Text style={styles.statLabel}>Validations</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{voiceClips.length}</Text>
-              <Text style={styles.statLabel}>Clips</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>0</Text>
-              <Text style={styles.statLabel}>Stories</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>5</Text>
-              <Text style={styles.statLabel}>Duets</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Tab Navigation */}
-        <View style={styles.tabContainer}>
-          {['Clips', 'Badges', 'Rewards'].map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[
-                styles.tab,
-                activeTab === tab && styles.activeTab
-              ]}
-              onPress={() => {
-                setActiveTab(tab as typeof activeTab);
-                if (tab === 'Rewards') {
-                  navigation.navigate('Rewards');
-                }
-              }}
-            >
-              <Text style={[
-                styles.tabText,
-                activeTab === tab && styles.activeTabText
-              ]}>
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Content */}
-        <View style={styles.content}>
-          {activeTab === 'Clips' && (
-            <View style={styles.clipsSection}>
-                          {voiceClips.length > 0 ? (
+        {activeTab === 'My Clips' && (
+          <View style={styles.clipsSection}>
+            {voiceClips.length > 0 ? (
               voiceClips.map(renderVoiceClip)
-              ) : (
-                <View style={styles.emptyState}>
-                  <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
-                  <Text style={styles.emptyStateTitle}>No clips yet</Text>
-                  <Text style={styles.emptyStateDescription}>
-                    Start recording to share your voice with the world
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.recordButton}
-                    onPress={() => navigation.navigate('RecordVoice')}
-                  >
-                    <Ionicons name="mic" size={20} color="#FFFFFF" />
-                    <Text style={styles.recordButtonText}>Record Now</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          )}
-
-          {activeTab === 'Badges' && (
-            <View style={styles.badgesSection}>
-              <Text style={styles.sectionTitle}>Your Badges</Text>
-              {badges
-                .filter((badge: Badge) => badge.earned)
-                .map(renderBadge)}
-
-              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Available Badges</Text>
-              {badges
-                .filter((badge: Badge) => !badge.earned)
-                .map(renderBadge)}
-            </View>
-          )}
-
-          {activeTab === 'Rewards' && (
-            <View style={styles.rewardsSection}>
+            ) : (
               <View style={styles.emptyState}>
-                <Ionicons name="gift-outline" size={64} color="#D1D5DB" />
-                <Text style={styles.emptyStateTitle}>No rewards yet</Text>
+                <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyStateTitle}>No clips yet</Text>
                 <Text style={styles.emptyStateDescription}>
-                  Earn points by contributing to unlock rewards
+                  Start recording to share your voice with the world
                 </Text>
                 <TouchableOpacity
                   style={styles.recordButton}
-                  onPress={() => navigation.navigate('Rewards')}
+                  onPress={() => navigation.navigate('RecordVoice')}
                 >
-                  <Ionicons name="trophy" size={20} color="#FFFFFF" />
-                  <Text style={styles.recordButtonText}>View Leaderboard</Text>
+                  <Ionicons name="mic" size={20} color="#FFFFFF" />
+                  <Text style={styles.recordButtonText}>Record Now</Text>
                 </TouchableOpacity>
               </View>
+            )}
+          </View>
+        )}
+
+        {activeTab === 'Badges' && (
+          <View style={styles.badgesSection}>
+            <View style={styles.badgeCard}>
+              <View style={styles.badgeIcon}>
+                <Ionicons name="sparkles" size={32} color="#FF8A00" />
+              </View>
+              <View style={styles.badgeContent}>
+                <Text style={styles.badgeTitle}>Language Pioneer</Text>
+                <Text style={styles.badgeDescription}>
+                  Welcome to LinguaLink! Ready to preserve languages.
+                </Text>
+                <Text style={styles.badgeDate}>Earned today</Text>
+              </View>
             </View>
-          )}
-        </View>
+
+            <View style={styles.lockedBadgesContainer}>
+              <Text style={styles.sectionTitle}>Locked Badges</Text>
+              <View style={styles.lockedBadge}>
+                <Ionicons name="lock-closed" size={24} color="#9CA3AF" />
+                <Text style={styles.lockedBadgeText}>First Recording</Text>
+              </View>
+              <View style={styles.lockedBadge}>
+                <Ionicons name="lock-closed" size={24} color="#9CA3AF" />
+                <Text style={styles.lockedBadgeText}>Story Teller</Text>
+              </View>
+              <View style={styles.lockedBadge}>
+                <Ionicons name="lock-closed" size={24} color="#9CA3AF" />
+                <Text style={styles.lockedBadgeText}>Community Helper</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {activeTab === 'Rewards' && (
+          <View style={styles.rewardsSection}>
+            <View style={styles.emptyState}>
+              <Ionicons name="gift-outline" size={64} color="#D1D5DB" />
+              <Text style={styles.emptyStateTitle}>No rewards yet</Text>
+              <Text style={styles.emptyStateDescription}>
+                Earn points by contributing to unlock rewards
+              </Text>
+            </View>
+          </View>
+        )}
       </ScrollView>
-
-      {/* Following Modal */}
-      <Modal
-        visible={showFollowingModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowFollowingModal(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Following ({following.length})</Text>
-            <TouchableOpacity onPress={() => setShowFollowingModal(false)}>
-              <Ionicons name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.modalContent}>
-            {following.length > 0 ? (
-              following.map(renderUserItem)
-            ) : (
-              <View style={styles.emptyModalState}>
-                <Ionicons name="people-outline" size={48} color="#D1D5DB" />
-                <Text style={styles.emptyModalText}>Not following anyone yet</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* Followers Modal */}
-      <Modal
-        visible={showFollowersModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowFollowersModal(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Followers ({followers.length})</Text>
-            <TouchableOpacity onPress={() => setShowFollowersModal(false)}>
-              <Ionicons name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.modalContent}>
-            {followers.length > 0 ? (
-              followers.map(renderUserItem)
-            ) : (
-              <View style={styles.emptyModalState}>
-                <Ionicons name="people-outline" size={48} color="#D1D5DB" />
-                <Text style={styles.emptyModalText}>No followers yet</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -937,33 +436,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
-  scrollContainer: {
-    flex: 1,
-  },
   header: {
     backgroundColor: '#FF8A00',
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingTop: height * 0.02,
+    paddingBottom: height * 0.03,
     paddingHorizontal: width * 0.05,
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: width * 0.06,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   profileInfo: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   avatarContainer: {
     marginBottom: 12,
-    position: 'relative',
   },
   avatar: {
     width: 80,
@@ -974,128 +469,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 3,
     borderColor: '#FFFFFF',
-    overflow: 'hidden',
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   avatarImage: {
     width: '100%',
     height: '100%',
-  },
-  avatarEmoji: {
-    fontSize: 40,
-    textAlign: 'center',
-    lineHeight: 80,
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    bottom: 6,
-    right: 6,
-  },
-  profileNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
+    borderRadius: 40,
   },
   profileName: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
-  },
-  verifiedIcon: {
-    marginLeft: 4,
+    marginBottom: 4,
   },
   profileUsername: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
     marginBottom: 8,
-  },
-  profileBio: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
-    marginHorizontal: 20,
-    marginBottom: 10,
-    lineHeight: 18,
-  },
-  profileDetails: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 8,
-  },
-  detailText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginLeft: 4,
   },
   languageTag: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 10,
   },
   languageText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#FFFFFF',
     fontWeight: '500',
-  },
-  followStatsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 12,
-    width: '100%',
-  },
-  followStatItem: {
-    alignItems: 'center',
-    marginHorizontal: 20,
-    padding: 8,
-    minWidth: 80,
-  },
-  followStatNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  followStatLabel: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  mutualStatText: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 2,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
   },
   statCard: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-    marginHorizontal: 3,
+    marginHorizontal: 4,
   },
   statNumber: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   statLabel: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
   },
   tabContainer: {
     flexDirection: 'row',
@@ -1126,18 +553,16 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    minHeight: height * 0.5, // Ensure minimum height for content
   },
   clipsSection: {
     paddingHorizontal: width * 0.05,
     paddingTop: 20,
-    paddingBottom: 100, // Add bottom padding
   },
   clipCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1147,48 +572,27 @@ const styles = StyleSheet.create({
   clipHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  clipHeaderLeft: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  validationBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  validationText: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '500',
-    marginLeft: 2,
+    marginBottom: 4,
   },
   clipPhrase: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#1F2937',
-  },
-  clipTranslation: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
+    maxWidth: '60%',
   },
   clipTime: {
     fontSize: 12,
     color: '#9CA3AF',
   },
+  clipLanguage: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
   clipStats: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 12,
+    justifyContent: 'space-between',
   },
   statItem: {
     flexDirection: 'row',
@@ -1199,35 +603,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
-  waveformContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 40,
-    marginBottom: 16,
-  },
-  waveformBar: {
-    width: 3,
-    backgroundColor: '#FF8A00',
-    marginHorizontal: 1,
-    borderRadius: 2,
-  },
   badgesSection: {
     paddingHorizontal: width * 0.05,
     paddingTop: 20,
-    paddingBottom: 100, // Add bottom padding
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 16,
   },
   badgeCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
@@ -1237,21 +621,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   badgeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FEF3E2',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
-    position: 'relative',
-  },
-  lockIcon: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 2,
   },
   badgeContent: {
     flex: 1,
@@ -1270,13 +646,34 @@ const styles = StyleSheet.create({
   },
   badgeDate: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#FF8A00',
     fontWeight: '500',
+  },
+  lockedBadgesContainer: {
+    marginTop: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  lockedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  lockedBadgeText: {
+    marginLeft: 12,
+    fontSize: 14,
+    color: '#9CA3AF',
   },
   rewardsSection: {
     paddingHorizontal: width * 0.05,
     paddingTop: 20,
-    paddingBottom: 100, // Add bottom padding
   },
   emptyState: {
     alignItems: 'center',
@@ -1300,224 +697,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FF8A00',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     marginTop: 20,
   },
   recordButtonText: {
     color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    marginTop: 80,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
-  modalContent: {
-    flex: 1,
-  },
-  emptyModalState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyModalText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 16,
-  },
-  userItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  userAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  userAvatarEmoji: {
-    fontSize: 24,
-    textAlign: 'center',
-    lineHeight: 48,
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  userUsername: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  userStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  userStat: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginRight: 8,
-  },
-  mutualFollowBadge: {
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  mutualFollowText: {
-    fontSize: 10,
-    color: '#4B5563',
-    fontWeight: '500',
-  },
-  followButton: {
-    backgroundColor: '#FF8A00',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    minWidth: 80,
-    alignItems: 'center',
-  },
-  followingButton: {
-    backgroundColor: '#E5E7EB',
-  },
-  followButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  followingButtonText: {
-    color: '#4B5563',
-  },
-  // Loading and error states
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FF8A00',
-  },
-  loadingText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginTop: 16,
-    fontWeight: '500',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FF8A00',
-    paddingHorizontal: 32,
-  },
-  errorText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 24,
-    fontWeight: '500',
-  },
-  retryButton: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FF8A00',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // Audio playback styles
-  audioSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingVertical: 8,
-  },
-  playButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FF8A00',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  disabledPlayButton: {
-    backgroundColor: '#D1D5DB',
-  },
-  audioInfo: {
-    flex: 1,
-  },
-  audioDuration: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  playingText: {
-    fontSize: 12,
-    color: '#FF8A00',
-    fontWeight: '500',
-  },
-  playingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3E2',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 12,
-  },
-  playingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FF8A00',
-    marginRight: 6,
-  },
-  playingIndicatorText: {
-    fontSize: 12,
-    color: '#FF8A00',
-    fontWeight: '500',
-  },
 });
+
 export default ProfileScreen;
