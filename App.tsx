@@ -1,12 +1,14 @@
 // App.tsx - Updated with new navigation routes
-import React, { useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useState, useEffect, useRef } from 'react';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/context/AuthProvider';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as Linking from 'expo-linking';
+import { deepLinkHandler } from './src/utils/deepLinking';
 
 // Import all screens
 
@@ -656,9 +658,67 @@ const AuthGate = () => {
 };
 
 export default function App() {
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
+
+  // Set the navigation reference for deep linking
+  useEffect(() => {
+    if (navigationRef.current) {
+      deepLinkHandler.setNavigationRef(navigationRef.current);
+    }
+  }, []);
+
+  // Handle incoming deep links
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      console.log('Incoming deep link:', event.url);
+      deepLinkHandler.handleDeepLink(event.url);
+    };
+
+    // Handle initial URL if app was opened via deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        console.log('Initial deep link:', url);
+        deepLinkHandler.handleDeepLink(url);
+      }
+    });
+
+    // Listen for incoming deep links
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    return () => subscription?.remove();
+  }, []);
+
+  // Deep linking configuration
+  const linking = {
+    prefixes: ['exp://', 'exp+lingualink://', 'https://lingualink.app'],
+    config: {
+      screens: {
+        Welcome: 'welcome',
+        SignUp: 'signup',
+        SignIn: 'signin',
+        VerifyEmail: 'verify-email',
+        AuthCallback: 'auth-callback',
+        MainTabs: 'main',
+        RecordVoice: 'record-voice',
+        TellStory: 'tell-story',
+        Validation: 'validation',
+        Settings: 'settings',
+        Rewards: 'rewards',
+        ChatDetail: 'chat/:id',
+        GroupChat: 'group/:id',
+        VoiceCall: 'call/voice/:id',
+        VideoCall: 'call/video/:id',
+        GroupCall: 'call/group/:id',
+        TurnVerse: 'games/turnverse',
+        LiveStream: 'live/:roomId',
+        ContactDiscovery: 'discover',
+      },
+    },
+  };
+
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef} linking={linking}>
         <AuthGate />
       </NavigationContainer>
     </AuthProvider>

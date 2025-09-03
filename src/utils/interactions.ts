@@ -516,38 +516,105 @@ export const subscribeToComments = async (
   onComment: (comment: Comment) => void
 ): Promise<() => void> => {
   try {
+    console.log('Setting up comment subscription for clip:', clipId);
+
     const subscription = supabase
       .channel(`comments-${clipId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Listen to all events: INSERT, UPDATE, DELETE
           schema: 'public',
           table: 'comments',
-          filter: `voice_clip_id=eq.${clipId}`,
+          // Temporarily remove filter to test if basic subscription works
+          // filter: `voice_clip_id=eq.${clipId}`,
         },
         async (payload) => {
-          const comment = payload.new as Comment;
+          console.log('Comment change received:', payload.eventType, payload);
+          console.log('Payload details:', {
+            new: payload.new,
+            old: payload.old,
+            table: payload.table,
+            schema: payload.schema,
+            commit_timestamp: payload.commit_timestamp
+          });
 
-          // Get user profile for the comment
-          const { data: userProfile } = await supabase
-            .from('profiles')
-            .select('id, username, full_name, avatar_url')
-            .eq('id', comment.user_id)
-            .single();
+          // Check if this comment is for our clip
+          const comment = (payload.new || payload.old) as Comment;
+          if (comment && comment.voice_clip_id !== clipId) {
+            console.log('Ignoring comment for different clip:', comment.voice_clip_id, 'expected:', clipId);
+            return;
+          }
 
-          const fullComment: Comment = {
-            ...comment,
-            user: userProfile || { id: comment.user_id, username: 'Unknown', full_name: 'Unknown' },
-            is_liked_by_current_user: false,
-          };
+          if (payload.eventType === 'INSERT') {
+            const newComment = payload.new as Comment;
+            console.log('Processing INSERT for comment:', newComment.id, 'by user:', newComment.user_id);
 
-          onComment(fullComment);
+            // Get user profile for the comment
+            const { data: userProfile, error: profileError } = await supabase
+              .from('profiles')
+              .select('id, username, full_name, avatar_url')
+              .eq('id', newComment.user_id)
+              .single();
+
+            if (profileError) {
+              console.error('Error fetching user profile:', profileError);
+            }
+
+            const fullComment: Comment = {
+              ...newComment,
+              user: userProfile || { id: newComment.user_id, username: 'Unknown', full_name: 'Unknown' },
+              is_liked_by_current_user: false,
+            };
+
+            console.log('Calling onComment with full comment:', fullComment);
+            onComment(fullComment);
+          } else if (payload.eventType === 'UPDATE') {
+            // Handle comment updates (like count changes, content edits, etc.)
+            const updatedComment = payload.new as Comment;
+            const oldComment = payload.old as Comment;
+            console.log('Processing UPDATE for comment:', updatedComment.id);
+
+            // Get user profile for the updated comment
+            const { data: userProfile, error: profileError } = await supabase
+              .from('profiles')
+              .select('id, username, full_name, avatar_url')
+              .eq('id', updatedComment.user_id)
+              .single();
+
+            if (profileError) {
+              console.error('Error fetching user profile for update:', profileError);
+            }
+
+            const fullComment: Comment = {
+              ...updatedComment,
+              user: userProfile || { id: updatedComment.user_id, username: 'Unknown', full_name: 'Unknown' },
+              is_liked_by_current_user: false, // Will be updated by the UI
+            };
+
+            console.log('Calling onComment with updated comment:', fullComment);
+            onComment(fullComment);
+          } else if (payload.eventType === 'DELETE') {
+            // Handle comment deletion
+            const deletedComment = payload.old as Comment;
+            console.log('Processing DELETE for comment:', deletedComment.id);
+            onComment({ ...deletedComment, _deleted: true } as any);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Comment subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to comments for clip:', clipId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Channel error for comments subscription on clip:', clipId);
+        } else if (status === 'TIMED_OUT') {
+          console.error('Subscription timed out for comments on clip:', clipId);
+        }
+      });
 
     return () => {
+      console.log('Unsubscribing from comments for clip:', clipId);
       subscription.unsubscribe();
     };
   } catch (error) {
