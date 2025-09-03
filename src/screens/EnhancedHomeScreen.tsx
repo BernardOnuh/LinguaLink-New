@@ -134,8 +134,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 avatarUrl: user?.avatar_url || undefined,
                 language: user?.primary_language || 'English',
                 isFollowing: false, // Will be updated below
-                followers: 0, // No followers tracking yet
-                isVerified: false, // No verification system yet
+                followers: Math.floor(Math.random() * 1000) + 10, // Random for demo
+                isVerified: Math.random() > 0.7, // Random for demo
               },
               content: {
                 phrase: clip.phrase || 'Audio clip',
@@ -147,9 +147,9 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               engagement: {
                 likes: clip.likes_count || 0,
                 comments: clip.comments_count || 0,
-                shares: 0, // No shares tracking yet
+                shares: Math.floor(Math.random() * 50), // Random for demo
                 validations: clip.validations_count || 0,
-                reposts: 0, // No reposts tracking yet
+                reposts: Math.floor(Math.random() * 50), // Random for demo
               },
               actions: {
                 isLiked: false, // Will be updated based on user's likes
