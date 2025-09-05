@@ -68,10 +68,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Create redirect URI for OAuth/email callbacks (Expo Go & dev builds)
       // Route mapped in App.tsx as AuthCallback → 'auth-callback'
-      const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'lingualink',
-        path: 'auth-callback',
-      });
+      // Use web redirect for production, custom scheme for development
+      const redirectUri = __DEV__
+        ? AuthSession.makeRedirectUri({
+            scheme: 'lingualink',
+            path: 'auth-callback',
+          })
+        : 'https://lingualinknew.netlify.app';
 
       console.log('Google OAuth redirect URI:', redirectUri);
 
@@ -216,10 +219,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (existing) return 'Username is already taken';
 
       // Compute redirect for email confirmation links (works in Expo Go)
-      const emailRedirectTo = AuthSession.makeRedirectUri({
-        scheme: 'lingualink',
-        path: 'auth-callback',
-      });
+      const emailRedirectTo = __DEV__
+        ? AuthSession.makeRedirectUri({
+            scheme: 'lingualink',
+            path: 'auth-callback',
+          })
+        : 'https://lingualinknew.netlify.app';
 
       const { data, error } = await supabase.auth.signUp({
         email,

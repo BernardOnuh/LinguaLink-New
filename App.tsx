@@ -690,7 +690,7 @@ export default function App() {
 
   // Deep linking configuration
   const linking = {
-    prefixes: ['exp://', 'exp+lingualink://', 'https://lingualink.app'],
+    prefixes: ['exp://', 'exp+lingualink://', 'lingualink://'],
     config: {
       screens: {
         Welcome: 'welcome',
