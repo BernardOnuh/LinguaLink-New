@@ -1,10 +1,5 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
-// Override NDK version to use working version instead of corrupted one
-ext {
-    ndkVersion = "29.0.14033849"
-}
-
 buildscript {
   repositories {
     google()
@@ -36,9 +31,6 @@ allprojects {
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
   }
-
-  // Force all projects to use the working NDK version
-  project.ext.ndkVersion = "29.0.14033849"
 }
 
 apply plugin: "expo-root-project"
