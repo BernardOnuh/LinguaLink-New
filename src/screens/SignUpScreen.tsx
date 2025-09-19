@@ -1,5 +1,5 @@
 // src/screens/SignUpScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import LanguagePicker from '../components/LanguagePicker';
 import { useAuth } from '../context/AuthProvider';
+import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
@@ -58,6 +59,91 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>();
 
+  // Real-time validation states
+  const [emailError, setEmailError] = useState<string>('');
+  const [usernameError, setUsernameError] = useState<string>('');
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Real-time email validation
+  const validateEmail = async (email: string) => {
+    if (!email) {
+      setEmailError('');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      const { data: existingEmail } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingEmail) {
+        setEmailError('An account with this email already exists');
+      } else {
+        setEmailError('');
+      }
+    } catch (error) {
+      setEmailError('Error checking email availability');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Real-time username validation
+  const validateUsername = async (username: string) => {
+    if (!username) {
+      setUsernameError('');
+      return;
+    }
+
+    if (username.length < 3) {
+      setUsernameError('Username must be at least 3 characters');
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      const { data: existingUsername } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (existingUsername) {
+        setUsernameError('Username is already taken');
+      } else {
+        setUsernameError('');
+      }
+    } catch (error) {
+      setUsernameError('Error checking username availability');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Debounced validation
+  useEffect(() => {
+    const emailTimer = setTimeout(() => {
+      if (user.email) validateEmail(user.email);
+    }, 500);
+    return () => clearTimeout(emailTimer);
+  }, [user.email]);
+
+  useEffect(() => {
+    const usernameTimer = setTimeout(() => {
+      if (user.username) validateUsername(user.username);
+    }, 500);
+    return () => clearTimeout(usernameTimer);
+  }, [user.username]);
+
   const handleSignUp = async () => {
     if (!user.fullName || !user.username || !user.email || !user.password || !user.primaryLanguage) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -67,9 +153,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(user.email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+    if (emailError || usernameError) {
+      Alert.alert('Error', 'Please fix the validation errors before continuing');
       return;
     }
 
@@ -133,7 +218,11 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           {/* Username */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Username</Text>
-            <View style={styles.inputContainer}>
+            <View style={[
+              styles.inputContainer,
+              usernameError ? styles.inputContainerError : null,
+              !usernameError && user.username ? styles.inputContainerSuccess : null
+            ]}>
               <Text style={styles.atSymbol}>@</Text>
               <TextInput
                 style={[styles.textInput, styles.usernameInput]}
@@ -143,14 +232,29 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                 onChangeText={(text) => setUser({ ...user, username: text })}
                 autoCapitalize="none"
               />
+              {isValidating && user.username ? (
+                <Ionicons name="time-outline" size={16} color="#6B7280" />
+              ) : usernameError ? (
+                <Ionicons name="close-circle" size={16} color="#EF4444" />
+              ) : !usernameError && user.username ? (
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+              ) : null}
             </View>
-            <Text style={styles.inputHint}>This will be your public display name</Text>
+            {usernameError ? (
+              <Text style={styles.errorText}>{usernameError}</Text>
+            ) : (
+              <Text style={styles.inputHint}>This will be your public display name</Text>
+            )}
           </View>
 
           {/* Email */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email Address</Text>
-            <View style={styles.inputContainer}>
+            <View style={[
+              styles.inputContainer,
+              emailError ? styles.inputContainerError : null,
+              !emailError && user.email ? styles.inputContainerSuccess : null
+            ]}>
               <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.textInput}
@@ -161,7 +265,17 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                 value={user.email}
                 onChangeText={(text) => setUser({ ...user, email: text })}
               />
+              {isValidating && user.email ? (
+                <Ionicons name="time-outline" size={16} color="#6B7280" />
+              ) : emailError ? (
+                <Ionicons name="close-circle" size={16} color="#EF4444" />
+              ) : !emailError && user.email ? (
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+              ) : null}
             </View>
+            {emailError ? (
+              <Text style={styles.errorText}>{emailError}</Text>
+            ) : null}
           </View>
 
           {/* Password */}
@@ -428,6 +542,22 @@ const styles = StyleSheet.create({
     fontSize: width * 0.035,
     color: '#FF8A00',
     fontWeight: '600',
+  },
+  inputContainerError: {
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    backgroundColor: '#FEF2F2',
+  },
+  inputContainerSuccess: {
+    borderColor: '#10B981',
+    borderWidth: 1,
+    backgroundColor: '#F0FDF4',
+  },
+  errorText: {
+    fontSize: width * 0.03,
+    color: '#EF4444',
+    marginTop: 4,
+    fontWeight: '500',
   },
 });
 
