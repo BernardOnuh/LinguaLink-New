@@ -108,10 +108,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
 
 
   const handleForgotPassword = () => {
-    Alert.alert(
-      'Forgot Password',
-      'Password reset functionality would be implemented here.'
-    );
+    navigation.navigate('ForgotPassword');
   };
 
 

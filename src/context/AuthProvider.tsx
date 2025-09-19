@@ -20,6 +20,7 @@ type AuthContextValue = {
       primaryLanguage: string;
     }
   ) => Promise<null | string>;
+  resetPassword: (email: string) => Promise<null | string>;
   signOut: () => Promise<void>;
 };
 
@@ -265,13 +266,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      // Compute redirect for password reset links
+      const emailRedirectTo = __DEV__
+        ? AuthSession.makeRedirectUri({
+            scheme: 'lingualink',
+            path: 'auth-callback',
+          })
+        : 'https://lingualinknew.netlify.app';
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: emailRedirectTo,
+      });
+
+      if (error) {
+        return error.message;
+      }
+
+      return null; // Success
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
+    }
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, signOut }),
+    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, resetPassword, signOut }),
     [session, user, loading]
   );
 
