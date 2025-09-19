@@ -20,6 +20,7 @@ type AuthContextValue = {
       primaryLanguage: string;
     }
   ) => Promise<null | string>;
+  resetPassword: (email: string) => Promise<null | string>;
   signOut: () => Promise<void>;
 };
 
@@ -39,6 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       console.log('Auth state changed:', event, newSession?.user?.email);
+      console.log('Session:', newSession);
       setSession(newSession);
 
       // Handle OAuth sign-in success
@@ -54,12 +56,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const user = session?.user ?? null;
 
   const signIn: AuthContextValue['signIn'] = async (email, password) => {
-    setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       return error ? error.message : null;
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
     }
   };
 
@@ -209,6 +210,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage }) => {
     setLoading(true);
     try {
+      // Check if email already exists
+      const { data: existingEmail, error: emailCheckErr } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+      if (emailCheckErr) return emailCheckErr.message;
+      if (existingEmail) return 'An account with this email already exists';
+
       // Ensure unique username
       const { data: existing, error: checkErr } = await supabase
         .from('profiles')
@@ -256,13 +266,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      // Compute redirect for password reset links
+      const emailRedirectTo = __DEV__
+        ? AuthSession.makeRedirectUri({
+            scheme: 'lingualink',
+            path: 'auth-callback',
+          })
+        : 'https://lingualinknew.netlify.app';
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: emailRedirectTo,
+      });
+
+      if (error) {
+        return error.message;
+      }
+
+      return null; // Success
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
+    }
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, signOut }),
+    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, resetPassword, signOut }),
     [session, user, loading]
   );
 

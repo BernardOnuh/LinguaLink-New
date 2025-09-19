@@ -15,6 +15,7 @@ import { deepLinkHandler } from './src/utils/deepLinking';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import EnhancedHomeScreen from './src/screens/EnhancedHomeScreen';
 import RecordVoiceScreen from './src/screens/RecordVoiceScreen';
 import TellStoryScreen from './src/screens/TellStoryScreen';
@@ -77,6 +78,7 @@ export type RootStackParamList = {
   Welcome: undefined;
   SignUp: undefined;
   SignIn: undefined;
+  ForgotPassword: undefined;
   VerifyEmail: { email?: string } | undefined;
   AuthCallback: { code?: string } | undefined;
   MainTabs: undefined;
@@ -434,6 +436,13 @@ const AuthStack = () => (
           }}
         />
         <Stack.Screen
+          name="ForgotPassword"
+          component={ForgotPasswordScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
           name="VerifyEmail"
           component={VerifyEmailScreen}
           options={{
@@ -696,6 +705,7 @@ export default function App() {
         Welcome: 'welcome',
         SignUp: 'signup',
         SignIn: 'signin',
+        ForgotPassword: 'forgot-password',
         VerifyEmail: 'verify-email',
         AuthCallback: 'auth-callback',
         MainTabs: 'main',
