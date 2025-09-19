@@ -209,6 +209,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage }) => {
     setLoading(true);
     try {
+      // Check if email already exists
+      const { data: existingEmail, error: emailCheckErr } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+      if (emailCheckErr) return emailCheckErr.message;
+      if (existingEmail) return 'An account with this email already exists';
+
       // Ensure unique username
       const { data: existing, error: checkErr } = await supabase
         .from('profiles')
