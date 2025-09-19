@@ -39,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       console.log('Auth state changed:', event, newSession?.user?.email);
+      console.log('Session:', newSession);
       setSession(newSession);
 
       // Handle OAuth sign-in success
@@ -54,12 +55,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const user = session?.user ?? null;
 
   const signIn: AuthContextValue['signIn'] = async (email, password) => {
-    setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       return error ? error.message : null;
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
     }
   };
 

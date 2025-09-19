@@ -38,63 +38,79 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
   });
   const [showPassword, setShowPassword] = useState(false);
 
+  // Error handling states
+  const [emailError, setEmailError] = useState<string>('');
+  const [passwordError, setPasswordError] = useState<string>('');
+  const [generalError, setGeneralError] = useState<string>('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
   const handleGoogleSignIn = async () => {
+    // Clear previous errors
+    setGeneralError('');
+
     const error = await signInWithGoogle();
     if (error) {
-      Alert.alert('Google Sign-In Failed', error);
+      setGeneralError(error);
     }
   };
 
   const handleSignIn = async () => {
-    if (!credentials.email || !credentials.password) {
-      Alert.alert('Error', 'Please enter your email and password');
-      return;
-    }
+    console.log('Starting sign in process...');
 
+    // Clear previous errors
+    setEmailError('');
+    setPasswordError('');
+    setGeneralError('');
+
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!credentials.email) {
+      setEmailError('Email is required');
+      return;
+    }
     if (!emailRegex.test(credentials.email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      setEmailError('Please enter a valid email address');
       return;
     }
 
-    const err = await signIn(credentials.email, credentials.password);
-    if (err) {
-      Alert.alert('Sign In Failed', err);
+    if (!credentials.password) {
+      setPasswordError('Password is required');
       return;
     }
-    // AuthGate will switch stacks to MainTabs when session exists.
-  };
 
-  const handleDemoAccess = () => {
-    setCredentials({
-      email: 'demo@lingualink.app',
-      password: 'demo123',
-    });
-    Alert.alert(
-      'Demo Access',
-      'Demo credentials filled in! Tap Sign In to continue.',
-      [
-        {
-          text: 'Sign In Now',
-          onPress: () => {
-            Alert.alert(
-              'Demo Login Success',
-              'Welcome to LinguaLink Demo!'
-            );
-          }
-        },
-        {
-          text: 'OK',
-          style: 'cancel'
+    console.log('Validation passed, starting authentication...');
+    // Only show loading state after validation passes
+    setIsSigningIn(true);
+    try {
+      const err = await signIn(credentials.email, credentials.password);
+      console.log('Sign in result:', err);
+      if (err) {
+        console.log('Sign in error:', err);
+        // Handle specific error types
+        if (err.includes('Invalid login credentials')) {
+          setGeneralError('Invalid email or password');
+        } else if (err.includes('Email not confirmed')) {
+          setGeneralError('Please verify your email before signing in');
+        } else {
+          setGeneralError(err);
         }
-      ]
-    );
+        return;
+      }
+      console.log('Sign in successful!');
+      // AuthGate will switch stacks to MainTabs when session exists.
+    } catch (error: any) {
+      console.log('Sign in exception:', error);
+      setGeneralError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSigningIn(false);
+    }
   };
+
 
   const handleForgotPassword = () => {
     Alert.alert(
       'Forgot Password',
-      'Password reset functionality would be implemented here. For demo purposes, use:\n\nEmail: demo@lingualink.app\nPassword: demo123'
+      'Password reset functionality would be implemented here.'
     );
   };
 
@@ -124,7 +140,10 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
           {/* Email */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email Address</Text>
-            <View style={styles.inputContainer}>
+            <View style={[
+              styles.inputContainer,
+              emailError ? styles.inputContainerError : null
+            ]}>
               <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.textInput}
@@ -133,15 +152,27 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 value={credentials.email}
-                onChangeText={(text) => setCredentials({ ...credentials, email: text })}
+                onChangeText={(text) => {
+                  setCredentials({ ...credentials, email: text });
+                  if (emailError) setEmailError(''); // Clear error when user starts typing
+                }}
               />
+              {emailError ? (
+                <Ionicons name="close-circle" size={16} color="#EF4444" />
+              ) : null}
             </View>
+            {emailError ? (
+              <Text style={styles.errorText}>{emailError}</Text>
+            ) : null}
           </View>
 
           {/* Password */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Password</Text>
-            <View style={styles.inputContainer}>
+            <View style={[
+              styles.inputContainer,
+              passwordError ? styles.inputContainerError : null
+            ]}>
               <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.textInput}
@@ -149,7 +180,10 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
                 placeholderTextColor="#999"
                 secureTextEntry={!showPassword}
                 value={credentials.password}
-                onChangeText={(text) => setCredentials({ ...credentials, password: text })}
+                onChangeText={(text) => {
+                  setCredentials({ ...credentials, password: text });
+                  if (passwordError) setPasswordError(''); // Clear error when user starts typing
+                }}
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Ionicons
@@ -158,8 +192,22 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
                   color="#999"
                 />
               </TouchableOpacity>
+              {passwordError ? (
+                <Ionicons name="close-circle" size={16} color="#EF4444" style={{ marginLeft: 8 }} />
+              ) : null}
             </View>
+            {passwordError ? (
+              <Text style={styles.errorText}>{passwordError}</Text>
+            ) : null}
           </View>
+
+          {/* General Error Message */}
+          {generalError ? (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={16} color="#EF4444" />
+              <Text style={styles.errorText}>{generalError}</Text>
+            </View>
+          ) : null}
 
           {/* Forgot Password */}
           <TouchableOpacity style={styles.forgotPassword} onPress={handleForgotPassword}>
@@ -167,8 +215,8 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
 
           {/* Sign In Button */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleSignIn} disabled={loading}>
-            <Text style={styles.primaryButtonText}>{loading ? 'Signing in...' : 'Sign In'}</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSignIn} disabled={isSigningIn}>
+            <Text style={styles.primaryButtonText}>{isSigningIn ? 'Signing in...' : 'Sign In'}</Text>
           </TouchableOpacity>
 
           {/* Google Sign In */}
@@ -185,13 +233,6 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {/* Demo Access */}
-          <TouchableOpacity style={styles.demoAccess} onPress={handleDemoAccess}>
-            <Text style={styles.demoTitle}>Demo Access</Text>
-            <Text style={styles.demoDescription}>Use any email and password to sign in</Text>
-            <Text style={styles.demoExample}>Example: demo@lingualink.app</Text>
-            <Text style={styles.demoPassword}>Password: demo123</Text>
-          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -319,32 +360,26 @@ const styles = StyleSheet.create({
     color: '#FF8A00',
     fontWeight: '600',
   },
-  demoAccess: {
-    backgroundColor: '#EEF2FF',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 20,
-    marginBottom: 30,
+  inputContainerError: {
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    backgroundColor: '#FEF2F2',
   },
-  demoTitle: {
-    fontSize: width * 0.04,
-    fontWeight: '600',
-    color: '#4F46E5',
-    marginBottom: 4,
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
   },
-  demoDescription: {
+  errorText: {
     fontSize: width * 0.035,
-    color: '#6366F1',
-    marginBottom: 8,
-  },
-  demoExample: {
-    fontSize: width * 0.03,
-    color: '#6366F1',
-    fontWeight: '500',
-  },
-  demoPassword: {
-    fontSize: width * 0.03,
-    color: '#6366F1',
+    color: '#EF4444',
+    marginLeft: 8,
+    flex: 1,
     fontWeight: '500',
   },
 });
