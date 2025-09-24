@@ -740,7 +740,16 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       <View style={styles.postHeader}>
     <TouchableOpacity
       style={styles.userInfo}
-      onPress={() => navigation.navigate('UserProfile', { userId: post.user.id })}
+      onPress={() => {
+        // Check if this is the authenticated user's own post
+        if (user && post.user.id === user.id) {
+          // Navigate to their own profile tab
+          navigation.navigate('Profile');
+        } else {
+          // Navigate to other user's profile
+          navigation.navigate('UserProfile', { userId: post.user.id });
+        }
+      }}
     >
           <View style={styles.avatar}>
             {post.user.avatarUrl ? (

@@ -19,6 +19,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
+import { submitValidation } from '../utils/content';
 
 const { width, height } = Dimensions.get('window');
 
@@ -40,7 +41,10 @@ interface VoiceClip {
   likes: number;
   comments: number;
   validations: number;
+  duets: number;
   timeAgo: string;
+  clip_type?: 'original' | 'duet' | 'remix';
+  original_clip_id?: string;
 }
 
 interface UserProfile {
@@ -126,6 +130,9 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
           likes_count,
           comments_count,
           validations_count,
+          duets_count,
+          clip_type,
+          original_clip_id,
           created_at
         `)
         .eq('user_id', targetUserId)
@@ -142,7 +149,10 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
           likes: clip.likes_count || 0,
           comments: clip.comments_count || 0,
           validations: clip.validations_count || 0,
-          timeAgo: getTimeAgo(clip.created_at)
+          duets: clip.duets_count || 0,
+          timeAgo: getTimeAgo(clip.created_at),
+          clip_type: clip.clip_type || 'original',
+          original_clip_id: clip.original_clip_id
         }));
 
         setVoiceClips(transformedClips);
@@ -232,6 +242,66 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  // Quick validation functionality
+  const handleQuickValidation = async (clipId: string, isCorrect: boolean) => {
+    if (!authUser?.id) {
+      Alert.alert('Error', 'Please sign in to validate clips');
+      return;
+    }
+
+    try {
+      const success = await submitValidation(
+        clipId,
+        'pronunciation', // Default to pronunciation validation
+        isCorrect ? 4 : 2, // 4 for correct, 2 for needs improvement
+        undefined, // No feedback for quick validation
+        isCorrect
+      );
+
+      if (success) {
+        // Update local state
+        setVoiceClips(prevClips =>
+          prevClips.map(clip =>
+            clip.id === clipId
+              ? {
+                  ...clip,
+                  validations: clip.validations + 1
+                }
+              : clip
+          )
+        );
+
+        Alert.alert(
+          'Validation Submitted',
+          `Thank you for validating this pronunciation as ${isCorrect ? 'correct' : 'needs improvement'}.`
+        );
+      } else {
+        Alert.alert('Error', 'Failed to submit validation. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error submitting validation:', error);
+      Alert.alert('Error', 'Failed to submit validation');
+    }
+  };
+
+  // Duet functionality
+  const handleDuet = (clip: VoiceClip) => {
+    if (!authUser?.id) {
+      Alert.alert('Error', 'Please sign in to create duets');
+      return;
+    }
+
+    navigation.navigate('RecordVoice', {
+      isDuet: true,
+      originalClip: {
+        id: clip.id,
+        phrase: clip.phrase,
+        user: userProfile?.full_name || 'User',
+        language: userProfile?.primary_language || 'Unknown'
+      }
+    });
+  };
+
   // Load all profile data
   const loadProfileData = async () => {
     setLoading(true);
@@ -268,10 +338,26 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const renderVoiceClip = (clip: VoiceClip) => (
     <View key={clip.id} style={styles.clipCard}>
       <View style={styles.clipHeader}>
-        <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+        <View style={styles.clipHeaderLeft}>
+          <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+          {clip.clip_type === 'duet' && (
+            <View style={styles.duetBadge}>
+              <Ionicons name="people" size={12} color="#8B5CF6" />
+              <Text style={styles.duetBadgeText}>Duet</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.clipTime}>{clip.timeAgo}</Text>
       </View>
       <Text style={styles.clipLanguage}>{clip.language}</Text>
+
+      {clip.clip_type === 'duet' && (
+        <View style={styles.duetInfo}>
+          <Text style={styles.duetInfoText}>
+            This is a duet response
+          </Text>
+        </View>
+      )}
 
       <View style={styles.clipStats}>
         <View style={styles.statItem}>
@@ -286,6 +372,37 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
           <Ionicons name="checkmark-circle" size={16} color="#10B981" />
           <Text style={styles.statText}>{clip.validations}</Text>
         </View>
+        <View style={styles.statItem}>
+          <Ionicons name="people" size={16} color="#8B5CF6" />
+          <Text style={styles.statText}>{clip.duets}</Text>
+        </View>
+      </View>
+
+      {/* Action Buttons */}
+      <View style={styles.clipActions}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleQuickValidation(clip.id, true)}
+        >
+          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+          <Text style={styles.actionText}>Correct</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleQuickValidation(clip.id, false)}
+        >
+          <Ionicons name="close-circle" size={20} color="#EF4444" />
+          <Text style={styles.actionText}>Needs Work</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleDuet(clip)}
+        >
+          <Ionicons name="people" size={20} color="#8B5CF6" />
+          <Text style={styles.actionText}>Duet</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -399,7 +516,9 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={styles.statLabel}>Contributions</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>
+              {voiceClips.filter(clip => clip.clip_type === 'duet').length}
+            </Text>
             <Text style={styles.statLabel}>Duets</Text>
           </View>
         </View>
@@ -806,6 +925,63 @@ const styles = StyleSheet.create({
   followStatLabel: {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
+  },
+  clipActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  actionText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  clipHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  duetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  duetBadgeText: {
+    fontSize: 10,
+    color: '#8B5CF6',
+    fontWeight: '500',
+    marginLeft: 2,
+  },
+  duetInfo: {
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  duetInfoText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
   },
 });
 
