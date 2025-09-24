@@ -12,8 +12,11 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -63,6 +66,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Avatar editing state
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // Helper function to format time ago
   const getTimeAgo = (dateString: string): string => {
@@ -205,6 +211,148 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     setRefreshing(false);
   };
 
+  // Avatar editing functions
+  const pickImage = async () => {
+    try {
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (permissionResult.granted === false) {
+        Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+        return;
+      }
+
+      // Show action sheet
+      Alert.alert(
+        'Select Avatar',
+        'Choose how you want to set your avatar',
+        [
+          {
+            text: 'Camera',
+            onPress: () => openCamera(),
+          },
+          {
+            text: 'Photo Library',
+            onPress: () => openImageLibrary(),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to open image picker');
+    }
+  };
+
+  const openCamera = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadAvatar(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error opening camera:', error);
+      Alert.alert('Error', 'Failed to open camera');
+    }
+  };
+
+  const openImageLibrary = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadAvatar(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error opening image library:', error);
+      Alert.alert('Error', 'Failed to open image library');
+    }
+  };
+
+  const uploadAvatar = async (imageUri: string) => {
+    if (!authUser?.id) return;
+
+    setUploadingAvatar(true);
+
+    try {
+      // Create a unique filename with user ID as folder
+      const fileExt = imageUri.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}.${fileExt}`;
+      const filePath = `${authUser.id}/${fileName}`;
+
+      // Read file as base64 using FileSystem
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Convert base64 to Uint8Array
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, bytes, {
+          contentType: `image/${fileExt}`,
+          upsert: true,
+        });
+
+      if (error) {
+        console.error('Supabase storage error:', error);
+        throw error;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          avatar_url: urlData.publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', authUser.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Update local state
+      setUserProfile(prev => prev ? {
+        ...prev,
+        avatar_url: urlData.publicUrl
+      } : null);
+
+      Alert.alert('Success', 'Avatar updated successfully!');
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Error', `Failed to upload avatar: ${errorMessage}`);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   // Load data when component mounts
   useEffect(() => {
     if (authUser?.id) {
@@ -292,19 +440,32 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         {/* Profile Info */}
         <View style={styles.profileInfo}>
           <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              {userProfile?.avatar_url && userProfile.avatar_url.startsWith('http') ? (
-                <Image
-                  source={{ uri: userProfile.avatar_url }}
-                  style={styles.avatarImage}
-                  onError={() => console.log('Failed to load avatar image:', userProfile.avatar_url)}
-                />
+            <TouchableOpacity
+              style={styles.avatar}
+              onPress={pickImage}
+              disabled={uploadingAvatar}
+            >
+              {uploadingAvatar ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.avatarText}>
-                  {userProfile?.username?.charAt(0)?.toUpperCase() || 'U'}
-                </Text>
+                <>
+                  {userProfile?.avatar_url && userProfile.avatar_url.startsWith('http') ? (
+                    <Image
+                      source={{ uri: userProfile.avatar_url }}
+                      style={styles.avatarImage}
+                      onError={() => console.log('Failed to load avatar image:', userProfile.avatar_url)}
+                    />
+                  ) : (
+                    <Text style={styles.avatarText}>
+                      {userProfile?.username?.charAt(0)?.toUpperCase() || 'U'}
+                    </Text>
+                  )}
+                  <View style={styles.editIconOverlay}>
+                    <Ionicons name="camera" size={16} color="#FFFFFF" />
+                  </View>
+                </>
               )}
-            </View>
+            </TouchableOpacity>
           </View>
           <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
@@ -479,6 +640,19 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 40,
+  },
+  editIconOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#FF8A00',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   profileName: {
     fontSize: 24,
