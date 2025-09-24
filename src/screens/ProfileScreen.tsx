@@ -42,7 +42,10 @@ interface VoiceClip {
   likes: number;
   comments: number;
   validations: number;
+  duets: number;
   timeAgo: string;
+  clip_type?: 'original' | 'duet' | 'remix';
+  original_clip_id?: string;
 }
 
 interface UserProfile {
@@ -160,6 +163,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           likes_count,
           comments_count,
           validations_count,
+          duets_count,
+          clip_type,
+          original_clip_id,
           created_at
         `)
         .eq('user_id', authUser.id)
@@ -176,7 +182,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           likes: clip.likes_count || 0,
           comments: clip.comments_count || 0,
           validations: clip.validations_count || 0,
-          timeAgo: getTimeAgo(clip.created_at)
+          duets: clip.duets_count || 0,
+          timeAgo: getTimeAgo(clip.created_at),
+          clip_type: clip.clip_type || 'original',
+          original_clip_id: clip.original_clip_id
         }));
 
         setVoiceClips(transformedClips);
@@ -364,10 +373,26 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const renderVoiceClip = (clip: VoiceClip) => (
     <View key={clip.id} style={styles.clipCard}>
       <View style={styles.clipHeader}>
-        <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+        <View style={styles.clipHeaderLeft}>
+          <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+          {clip.clip_type === 'duet' && (
+            <View style={styles.duetBadge}>
+              <Ionicons name="people" size={12} color="#8B5CF6" />
+              <Text style={styles.duetBadgeText}>Duet</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.clipTime}>{clip.timeAgo}</Text>
       </View>
       <Text style={styles.clipLanguage}>{clip.language}</Text>
+
+      {clip.clip_type === 'duet' && (
+        <View style={styles.duetInfo}>
+          <Text style={styles.duetInfoText}>
+            This is a duet response
+          </Text>
+        </View>
+      )}
 
       <View style={styles.clipStats}>
         <View style={styles.statItem}>
@@ -381,6 +406,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.statItem}>
           <Ionicons name="checkmark-circle" size={16} color="#10B981" />
           <Text style={styles.statText}>{clip.validations}</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Ionicons name="people" size={16} color="#8B5CF6" />
+          <Text style={styles.statText}>{clip.duets}</Text>
         </View>
       </View>
     </View>
@@ -486,7 +515,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.statLabel}>Contributions</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>
+              {voiceClips.filter(clip => clip.clip_type === 'duet').length}
+            </Text>
             <Text style={styles.statLabel}>Duets</Text>
           </View>
         </View>
@@ -882,6 +913,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  clipHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  duetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  duetBadgeText: {
+    fontSize: 10,
+    color: '#8B5CF6',
+    fontWeight: '500',
+    marginLeft: 2,
+  },
+  duetInfo: {
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  duetInfoText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
   },
 });
 

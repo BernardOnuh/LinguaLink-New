@@ -258,7 +258,10 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           likes_count: 0,
           comments_count: 0,
           validations_count: 0,
-          is_validated: false
+          is_validated: false,
+          // Duet/Remix tracking
+          original_clip_id: isDuet || isRemix ? originalClip?.id : null,
+          clip_type: isDuet ? 'duet' : isRemix ? 'remix' : 'original'
         })
         .select()
         .single();
@@ -267,6 +270,35 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
       console.log('Voice clip saved successfully:', data);
       console.log('Audio file available at:', uploadResult.url);
+
+      // If this is a duet, update the original clip's duet count
+      if (isDuet && originalClip?.id) {
+        try {
+          // Get current duet count and increment it
+          const { data: currentClip } = await supabase
+            .from('voice_clips')
+            .select('duets_count')
+            .eq('id', originalClip.id)
+            .single();
+
+          const newDuetCount = (currentClip?.duets_count || 0) + 1;
+
+          const { error: duetError } = await supabase
+            .from('voice_clips')
+            .update({
+              duets_count: newDuetCount
+            })
+            .eq('id', originalClip.id);
+
+          if (duetError) {
+            console.error('Error updating duet count:', duetError);
+          } else {
+            console.log('Duet count updated for original clip:', originalClip.id);
+          }
+        } catch (duetCountError) {
+          console.error('Error updating duet count:', duetCountError);
+        }
+      }
 
       const clipType = isRemix ? 'remix' : isDuet ? 'duet' : 'original clip';
       Alert.alert(
