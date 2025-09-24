@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import { deepLinkHandler } from './src/utils/deepLinking';
+import { supabase } from './src/supabaseClient';
 
 // Import all screens
 
@@ -16,12 +17,14 @@ import WelcomeScreen from './src/screens/WelcomeScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import NewPasswordScreen from './src/screens/NewPasswordScreen';
 import EnhancedHomeScreen from './src/screens/EnhancedHomeScreen';
 import RecordVoiceScreen from './src/screens/RecordVoiceScreen';
 import TellStoryScreen from './src/screens/TellStoryScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import RewardsScreen from './src/screens/RewardsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import UserProfileScreen from './src/screens/UserProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ValidationScreen from './src/screens/ValidationScreen';
 
@@ -79,6 +82,7 @@ export type RootStackParamList = {
   SignUp: undefined;
   SignIn: undefined;
   ForgotPassword: undefined;
+  NewPassword: { resetCode?: string } | undefined;
   VerifyEmail: { email?: string } | undefined;
   AuthCallback: { code?: string } | undefined;
   MainTabs: undefined;
@@ -106,6 +110,9 @@ export type RootStackParamList = {
   } | undefined;
   TellStory: undefined;
   Settings: undefined;
+  UserProfile: {
+    userId: string;
+  };
   Validation: {
     clipId?: string;
     language?: string;
@@ -143,9 +150,6 @@ export type RootStackParamList = {
     story: Story;
   };
   ContactDiscovery: undefined;
-  UserProfile: {
-    user: Contact;
-  };
 };
 
 export type TabParamList = {
@@ -319,10 +323,12 @@ const CreateModal = () => {
 
 const MainTabs = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const { user } = useAuth();
 
   return (
     <CreateModalContext.Provider value={{ showCreateModal, setShowCreateModal }}>
       <Tab.Navigator
+        key={user?.id || 'tabs'}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarIcon: ({ focused, color, size }) => {
@@ -438,6 +444,13 @@ const AuthStack = () => (
         <Stack.Screen
           name="ForgotPassword"
           component={ForgotPasswordScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="NewPassword"
+          component={NewPasswordScreen}
           options={{
             animation: 'slide_from_right',
           }}
@@ -616,7 +629,7 @@ const MainStack = () => (
         />
         <Stack.Screen
           name="UserProfile"
-          component={ProfileScreen} // Can reuse or create separate UserProfileScreen
+          component={UserProfileScreen}
           options={{
             animation: 'slide_from_right',
           }}
@@ -655,7 +668,11 @@ const MainStack = () => (
 
 const AuthGate = () => {
   const { session, loading } = useAuth();
+
+  console.log('AuthGate: session =', !!session, 'loading =', loading);
+
   if (loading) {
+    console.log('AuthGate: Showing loading screen');
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
         <ActivityIndicator size="large" color="#FF8A00" />
@@ -663,13 +680,15 @@ const AuthGate = () => {
       </View>
     );
   }
-  return session ? <MainStack /> : <AuthStack />;
+  // Key stacks by user so screens remount with fresh state after sign-in/sign-out
+  return session ? <MainStack key={session.user?.id || 'main'} /> : <AuthStack key="auth" />;
 };
 
 export default function App() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
+  const [navigationReady, setNavigationReady] = useState(false);
 
-  // Set the navigation reference for deep linking
+  // Handle incoming deep links only after navigation is ready
   useEffect(() => {
     if (navigationRef.current) {
       deepLinkHandler.setNavigationRef(navigationRef.current);
@@ -706,6 +725,7 @@ export default function App() {
         SignUp: 'signup',
         SignIn: 'signin',
         ForgotPassword: 'forgot-password',
+        NewPassword: 'new-password',
         VerifyEmail: 'verify-email',
         AuthCallback: 'auth-callback',
         MainTabs: 'main',
@@ -728,7 +748,11 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <NavigationContainer ref={navigationRef} linking={linking}>
+      <NavigationContainer
+        ref={navigationRef}
+        linking={linking}
+        onReady={() => setNavigationReady(true)}
+      >
         <AuthGate />
       </NavigationContainer>
     </AuthProvider>

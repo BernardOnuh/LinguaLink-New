@@ -738,7 +738,10 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     <View key={post.id} style={styles.postCard}>
       {/* Post Header */}
       <View style={styles.postHeader}>
-        <TouchableOpacity style={styles.userInfo}>
+    <TouchableOpacity
+      style={styles.userInfo}
+      onPress={() => navigation.navigate('UserProfile', { userId: post.user.id })}
+    >
           <View style={styles.avatar}>
             {post.user.avatarUrl ? (
               <Image
@@ -757,21 +760,17 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               {post.user.isVerified && (
                 <Ionicons name="checkmark-circle" size={16} color="#10B981" />
               )}
-              {!post.user.isFollowing ? (
-                <TouchableOpacity
-                  style={styles.followButton}
-                  onPress={() => handleFollow(post.user.id)}
-                >
-                  <Text style={styles.followButtonText}>Follow</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.followButton, styles.followingButton]}
-                  onPress={() => handleFollow(post.user.id)}
-                >
-                  <Text style={[styles.followButtonText, styles.followingButtonText]}>Following</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={!post.user.isFollowing ? styles.followButton : [styles.followButton, styles.followingButton]}
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent navigation when clicking follow button
+                  handleFollow(post.user.id);
+                }}
+              >
+                <Text style={!post.user.isFollowing ? styles.followButtonText : [styles.followButtonText, styles.followingButtonText]}>
+                  {post.user.isFollowing ? 'Following' : 'Follow'}
+                </Text>
+              </TouchableOpacity>
             </View>
             <View style={styles.postMeta}>
               <View style={styles.languageTag}>
@@ -1161,6 +1160,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+  },
+  userInfoPressed: {
+    backgroundColor: '#F3F4F6',
   },
   avatar: {
     width: 40,
