@@ -19,6 +19,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
+import { submitValidation } from '../utils/content';
 
 const { width, height } = Dimensions.get('window');
 
@@ -232,6 +233,66 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  // Quick validation functionality
+  const handleQuickValidation = async (clipId: string, isCorrect: boolean) => {
+    if (!authUser?.id) {
+      Alert.alert('Error', 'Please sign in to validate clips');
+      return;
+    }
+
+    try {
+      const success = await submitValidation(
+        clipId,
+        'pronunciation', // Default to pronunciation validation
+        isCorrect ? 4 : 2, // 4 for correct, 2 for needs improvement
+        undefined, // No feedback for quick validation
+        isCorrect
+      );
+
+      if (success) {
+        // Update local state
+        setVoiceClips(prevClips =>
+          prevClips.map(clip =>
+            clip.id === clipId
+              ? {
+                  ...clip,
+                  validations: clip.validations + 1
+                }
+              : clip
+          )
+        );
+
+        Alert.alert(
+          'Validation Submitted',
+          `Thank you for validating this pronunciation as ${isCorrect ? 'correct' : 'needs improvement'}.`
+        );
+      } else {
+        Alert.alert('Error', 'Failed to submit validation. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error submitting validation:', error);
+      Alert.alert('Error', 'Failed to submit validation');
+    }
+  };
+
+  // Duet functionality
+  const handleDuet = (clip: VoiceClip) => {
+    if (!authUser?.id) {
+      Alert.alert('Error', 'Please sign in to create duets');
+      return;
+    }
+
+    navigation.navigate('RecordVoice', {
+      isDuet: true,
+      originalClip: {
+        id: clip.id,
+        phrase: clip.phrase,
+        user: userProfile?.full_name || 'User',
+        language: userProfile?.primary_language || 'Unknown'
+      }
+    });
+  };
+
   // Load all profile data
   const loadProfileData = async () => {
     setLoading(true);
@@ -286,6 +347,33 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
           <Ionicons name="checkmark-circle" size={16} color="#10B981" />
           <Text style={styles.statText}>{clip.validations}</Text>
         </View>
+      </View>
+
+      {/* Action Buttons */}
+      <View style={styles.clipActions}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleQuickValidation(clip.id, true)}
+        >
+          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+          <Text style={styles.actionText}>Correct</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleQuickValidation(clip.id, false)}
+        >
+          <Ionicons name="close-circle" size={20} color="#EF4444" />
+          <Text style={styles.actionText}>Needs Work</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleDuet(clip)}
+        >
+          <Ionicons name="people" size={20} color="#8B5CF6" />
+          <Text style={styles.actionText}>Duet</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -806,6 +894,30 @@ const styles = StyleSheet.create({
   followStatLabel: {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
+  },
+  clipActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  actionText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#374151',
   },
 });
 
