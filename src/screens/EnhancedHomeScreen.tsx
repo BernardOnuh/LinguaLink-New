@@ -917,42 +917,13 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           onPress={() => handleLike(post.id)}
         >
           <Ionicons
-            name={post.actions.isLiked ? "heart" : "heart-outline"}
+            name={post.actions.isLiked ? "thumbs-up" : "thumbs-up-outline"}
             size={20}
-            color={post.actions.isLiked ? "#EF4444" : "#6B7280"}
+            color={post.actions.isLiked ? "#2563EB" : "#6B7280"}
           />
-          <Text style={[styles.actionText, post.actions.isLiked && styles.likedText]}>
-            {post.engagement.likes}
-          </Text>
+          <Text style={[styles.actionText, post.actions.isLiked && styles.likedText]}>Like</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="chatbubble-outline" size={20} color="#6B7280" />
-          <Text style={styles.actionText}>{post.engagement.comments}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => {
-            navigation.navigate('RecordVoice', {
-              isRemix: true,
-              originalClip: {
-                id: post.id,
-                phrase: post.content.phrase,
-                user: post.user.name,
-                language: post.user.language,
-              },
-            });
-          }}
-          accessibilityLabel="Remix"
-        >
-          <Ionicons
-            name={post.actions.isReposted ? "repeat" : "repeat-outline"}
-            size={20}
-            color={post.actions.isReposted ? "#10B981" : "#6B7280"}
-          />
-              {/* No count for remix */}
-        </TouchableOpacity>
 
         {post.type === 'voice' && (
           <TouchableOpacity
@@ -975,6 +946,27 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               size={20}
               color="#6B7280"
             />
+            <Text style={styles.actionText}>Duet</Text>
+          </TouchableOpacity>
+        )}
+        {post.type === 'voice' && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              navigation.navigate('RecordVoice', {
+                isRemix: true,
+                originalClip: {
+                  id: post.id,
+                  phrase: post.content.phrase,
+                  user: post.user.name,
+                  language: post.user.language,
+                },
+              });
+            }}
+            accessibilityLabel="Remix"
+          >
+            <Ionicons name="repeat" size={20} color="#6B7280" />
+            <Text style={styles.actionText}>Remix</Text>
           </TouchableOpacity>
         )}
 
@@ -993,7 +985,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               size={20}
               color={post.actions.needsValidation ? "#F59E0B" : "#10B981"}
             />
-            <Text style={styles.actionText}>{post.engagement.validations}</Text>
+            <Text style={styles.actionText}>Validate</Text>
           </TouchableOpacity>
         )}
 
@@ -1002,6 +994,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           onPress={() => setShowShareModal(post.id)}
         >
           <Ionicons name="share-outline" size={20} color="#6B7280" />
+          <Text style={styles.actionText}>Share</Text>
         </TouchableOpacity>
       </View>
 
@@ -1533,7 +1526,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   likedText: {
-    color: '#EF4444',
+    color: '#2563EB',
   },
   repostedText: {
     color: '#10B981',
