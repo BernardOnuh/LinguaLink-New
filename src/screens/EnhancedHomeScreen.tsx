@@ -204,16 +204,25 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
         const followingIds = new Set(followData?.map(f => f.following_id) || []);
 
-        // Update posts with correct follow status
-        setPosts(prevPosts =>
-          prevPosts.map(post => ({
-            ...post,
-            user: {
-              ...post.user,
-              isFollowing: followingIds.has(post.user.id)
+        // Update posts with correct follow status only if values change
+        setPosts(prevPosts => {
+          let changed = false;
+          const updated = prevPosts.map(post => {
+            const nextIsFollowing = followingIds.has(post.user.id);
+            if (post.user.isFollowing !== nextIsFollowing) {
+              changed = true;
+              return {
+                ...post,
+                user: {
+                  ...post.user,
+                  isFollowing: nextIsFollowing,
+                },
+              } as typeof post;
             }
-          }))
-        );
+            return post;
+          });
+          return changed ? updated : prevPosts;
+        });
       } catch (error) {
         console.error('Error in checkFollowStatus:', error);
       }
@@ -929,7 +938,15 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         )}
 
         {post.type === 'voice' && (
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() =>
+              navigation.navigate('Validation', {
+                clipId: post.id,
+                language: post.user.language,
+              })
+            }
+          >
             <Ionicons
               name={post.actions.isValidated ? "checkmark-circle" : "checkmark-circle-outline"}
               size={20}
