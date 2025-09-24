@@ -147,9 +147,9 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               engagement: {
                 likes: clip.likes_count || 0,
                 comments: clip.comments_count || 0,
-                shares: Math.floor(Math.random() * 50), // Random for demo
+                shares: clip.shares_count || 0,
                 validations: clip.validations_count || 0,
-                reposts: Math.floor(Math.random() * 50), // Random for demo
+                reposts: 0,
               },
               actions: {
                 isLiked: false, // Will be updated based on user's likes
@@ -442,6 +442,27 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>Create New Post</Text>
 
+          <ScrollView
+            style={styles.createModalScroll}
+            contentContainerStyle={styles.createModalScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+          <TouchableOpacity
+            style={styles.createOption}
+            onPress={() => {
+              setShowCreateModal(false);
+              navigation.navigate('CreateStory');
+            }}
+          >
+            <View style={[styles.createOptionIcon, styles.blueIcon]}>
+              <Ionicons name="images" size={24} color="#3B82F6" />
+            </View>
+            <View style={styles.createOptionContent}>
+              <Text style={styles.createOptionTitle}>Create Story</Text>
+              <Text style={styles.createOptionDescription}>Combine clips, text and media</Text>
+            </View>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -506,6 +527,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
+
+
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -537,6 +560,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               <Text style={styles.createOptionDescription}>Join language learning games</Text>
             </View>
           </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -816,7 +840,15 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         {post.type === 'voice' && (
           <>
             <View style={styles.phraseContainer}>
-              <Text style={styles.phrase}>{post.content.phrase}</Text>
+              <Text
+                style={styles.phrase}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+              >
+                {post.content.phrase}
+              </Text>
               <Text style={styles.translation}>{post.content.translation}</Text>
             </View>
             {post.content.audioWaveform && renderWaveform(post.content.audioWaveform)}
@@ -901,16 +933,25 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => handleRepost(post.id)}
+          onPress={() => {
+            navigation.navigate('RecordVoice', {
+              isRemix: true,
+              originalClip: {
+                id: post.id,
+                phrase: post.content.phrase,
+                user: post.user.name,
+                language: post.user.language,
+              },
+            });
+          }}
+          accessibilityLabel="Remix"
         >
           <Ionicons
             name={post.actions.isReposted ? "repeat" : "repeat-outline"}
             size={20}
             color={post.actions.isReposted ? "#10B981" : "#6B7280"}
           />
-          <Text style={[styles.actionText, post.actions.isReposted && styles.repostedText]}>
-            {post.engagement.reposts}
-          </Text>
+              {/* No count for remix */}
         </TouchableOpacity>
 
         {post.type === 'voice' && (
@@ -1530,7 +1571,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 16,
+  },
+  createModalScroll: {
+    maxHeight: 520,
+  },
+  createModalScrollContent: {
+    paddingBottom: 24,
   },
   createModalTitle: {
     fontSize: 20,
@@ -1564,6 +1611,9 @@ const styles = StyleSheet.create({
   },
   redIcon: {
     backgroundColor: '#FEE2E2',
+  },
+  blueIcon: {
+    backgroundColor: '#EFF6FF',
   },
   createOptionContent: {
     flex: 1,
