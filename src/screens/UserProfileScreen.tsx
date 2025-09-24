@@ -1,4 +1,4 @@
-// src/screens/ProfileScreen.tsx
+// src/screens/UserProfileScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -15,24 +15,22 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import { CompositeNavigationProp } from '@react-navigation/native';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, TabParamList } from '../../App';
+import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
-type ProfileScreenNavigationProp = CompositeNavigationProp<
-  BottomTabNavigationProp<TabParamList, 'Profile'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+type UserProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface Props {
-  navigation: ProfileScreenNavigationProp;
+  navigation: UserProfileScreenNavigationProp;
+  route: {
+    params: {
+      userId: string;
+    };
+  };
 }
 
 interface VoiceClip {
@@ -56,9 +54,9 @@ interface UserProfile {
   created_at: string;
 }
 
-const ProfileScreen: React.FC<Props> = ({ navigation }) => {
+const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const { user: authUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'My Clips' | 'Badges' | 'Rewards'>('My Clips');
+  const [activeTab, setActiveTab] = useState<'Clips' | 'Badges' | 'Rewards'>('Clips');
 
   // State for real data
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -67,8 +65,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Avatar editing state
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  // Follow functionality state
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+
+  const targetUserId = route.params.userId;
 
   // Helper function to format time ago
   const getTimeAgo = (dateString: string): string => {
@@ -86,22 +89,16 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
   // Fetch user profile from database
   const fetchUserProfile = async () => {
-    if (!authUser?.id) return;
+    if (!targetUserId) return;
 
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', authUser.id)
+        .eq('id', targetUserId)
         .single();
 
       if (error) {
-        // If profile doesn't exist, create one
-        if (error.code === 'PGRST116') {
-          console.log('Profile not found, creating new profile...');
-          await createUserProfile();
-          return;
-        }
         throw error;
       }
 
@@ -114,40 +111,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Create user profile if it doesn't exist
-  const createUserProfile = async () => {
-    if (!authUser?.id) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert({
-          id: authUser.id,
-          email: authUser.email,
-          full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || 'User',
-          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'user',
-          primary_language: authUser.user_metadata?.primary_language || 'English',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        console.log('Profile created successfully:', data);
-        setUserProfile(data);
-      }
-    } catch (error) {
-      console.error('Error creating user profile:', error);
-      setError('Failed to create profile');
-    }
-  };
-
   // Fetch user's voice clips from database
   const fetchVoiceClips = async () => {
-    if (!authUser?.id) return;
+    if (!targetUserId) return;
 
     try {
       const { data, error } = await supabase
@@ -162,7 +128,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           validations_count,
           created_at
         `)
-        .eq('user_id', authUser.id)
+        .eq('user_id', targetUserId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -186,6 +152,85 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Fetch follow status and counts
+  const fetchFollowData = async () => {
+    if (!authUser?.id || !targetUserId) return;
+
+    try {
+      // Check if current user is following target user
+      const { data: followData, error: followError } = await supabase
+        .from('followers')
+        .select('id')
+        .eq('follower_id', authUser.id)
+        .eq('following_id', targetUserId)
+        .single();
+
+      if (followError && followError.code !== 'PGRST116') {
+        throw followError;
+      }
+
+      setIsFollowing(!!followData);
+
+      // Get follower count
+      const { count: followerCount, error: followerError } = await supabase
+        .from('followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', targetUserId);
+
+      if (followerError) throw followerError;
+      setFollowerCount(followerCount || 0);
+
+      // Get following count
+      const { count: followingCount, error: followingError } = await supabase
+        .from('followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', targetUserId);
+
+      if (followingError) throw followingError;
+      setFollowingCount(followingCount || 0);
+
+    } catch (error) {
+      console.error('Error fetching follow data:', error);
+    }
+  };
+
+  // Follow/Unfollow functionality
+  const toggleFollow = async () => {
+    if (!authUser?.id || !targetUserId || followLoading) return;
+
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        // Unfollow
+        const { error } = await supabase
+          .from('followers')
+          .delete()
+          .eq('follower_id', authUser.id)
+          .eq('following_id', targetUserId);
+
+        if (error) throw error;
+        setIsFollowing(false);
+        setFollowerCount(prev => Math.max(0, prev - 1));
+      } else {
+        // Follow
+        const { error } = await supabase
+          .from('followers')
+          .insert({
+            follower_id: authUser.id,
+            following_id: targetUserId
+          });
+
+        if (error) throw error;
+        setIsFollowing(true);
+        setFollowerCount(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+      Alert.alert('Error', 'Failed to update follow status');
+    } finally {
+      setFollowLoading(false);
+    }
+  };
 
   // Load all profile data
   const loadProfileData = async () => {
@@ -195,7 +240,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     try {
       await Promise.all([
         fetchUserProfile(),
-        fetchVoiceClips()
+        fetchVoiceClips(),
+        fetchFollowData()
       ]);
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -212,154 +258,12 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  // Avatar editing functions
-  const pickImage = async () => {
-    try {
-      // Request permission
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (permissionResult.granted === false) {
-        Alert.alert('Permission Required', 'Permission to access camera roll is required!');
-        return;
-      }
-
-      // Show action sheet
-      Alert.alert(
-        'Select Avatar',
-        'Choose how you want to set your avatar',
-        [
-          {
-            text: 'Camera',
-            onPress: () => openCamera(),
-          },
-          {
-            text: 'Photo Library',
-            onPress: () => openImageLibrary(),
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to open image picker');
-    }
-  };
-
-  const openCamera = async () => {
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        await uploadAvatar(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error opening camera:', error);
-      Alert.alert('Error', 'Failed to open camera');
-    }
-  };
-
-  const openImageLibrary = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        await uploadAvatar(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error opening image library:', error);
-      Alert.alert('Error', 'Failed to open image library');
-    }
-  };
-
-  const uploadAvatar = async (imageUri: string) => {
-    if (!authUser?.id) return;
-
-    setUploadingAvatar(true);
-
-    try {
-      // Create a unique filename with user ID as folder
-      const fileExt = imageUri.split('.').pop() || 'jpg';
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `${authUser.id}/${fileName}`;
-
-      // Read file as base64 using FileSystem
-      const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // Convert base64 to Uint8Array
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, bytes, {
-          contentType: `image/${fileExt}`,
-          upsert: true,
-        });
-
-      if (error) {
-        console.error('Supabase storage error:', error);
-        throw error;
-      }
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
-      // Update profile with new avatar URL
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          avatar_url: urlData.publicUrl,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', authUser.id);
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // Update local state
-      setUserProfile(prev => prev ? {
-        ...prev,
-        avatar_url: urlData.publicUrl
-      } : null);
-
-      Alert.alert('Success', 'Avatar updated successfully!');
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('Error', `Failed to upload avatar: ${errorMessage}`);
-    } finally {
-      setUploadingAvatar(false);
-    }
-  };
-
   // Load data when component mounts
   useEffect(() => {
-    if (authUser?.id) {
+    if (targetUserId) {
       loadProfileData();
     }
-  }, [authUser?.id]);
+  }, [targetUserId]);
 
   const renderVoiceClip = (clip: VoiceClip) => (
     <View key={clip.id} style={styles.clipCard}>
@@ -433,45 +337,54 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+          <TouchableOpacity
+            onPress={toggleFollow}
+            disabled={followLoading}
+            style={styles.followButton}
+          >
+            {followLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.followButtonText}>
+                {isFollowing ? 'Following' : 'Follow'}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
         {/* Profile Info */}
         <View style={styles.profileInfo}>
           <View style={styles.avatarContainer}>
-            <TouchableOpacity
-              style={styles.avatar}
-              onPress={pickImage}
-              disabled={uploadingAvatar}
-            >
-              {uploadingAvatar ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+            <View style={styles.avatar}>
+              {userProfile?.avatar_url && userProfile.avatar_url.startsWith('http') ? (
+                <Image
+                  source={{ uri: userProfile.avatar_url }}
+                  style={styles.avatarImage}
+                  onError={() => console.log('Failed to load avatar image:', userProfile.avatar_url)}
+                />
               ) : (
-                <>
-                  {userProfile?.avatar_url && userProfile.avatar_url.startsWith('http') ? (
-                    <Image
-                      source={{ uri: userProfile.avatar_url }}
-                      style={styles.avatarImage}
-                      onError={() => console.log('Failed to load avatar image:', userProfile.avatar_url)}
-                    />
-                  ) : (
-                    <Text style={styles.avatarText}>
-                      {userProfile?.username?.charAt(0)?.toUpperCase() || 'U'}
-                    </Text>
-                  )}
-                  <View style={styles.editIconOverlay}>
-                    <Ionicons name="camera" size={16} color="#FFFFFF" />
-                  </View>
-                </>
+                <Text style={styles.avatarText}>
+                  {userProfile?.username?.charAt(0)?.toUpperCase() || 'U'}
+                </Text>
               )}
-            </TouchableOpacity>
+            </View>
           </View>
           <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
           <View style={styles.languageTag}>
             <Text style={styles.languageText}>{userProfile?.primary_language || 'Unknown Language'}</Text>
+          </View>
+
+          {/* Follower/Following counts */}
+          <View style={styles.followStats}>
+            <View style={styles.followStatItem}>
+              <Text style={styles.followStatNumber}>{followerCount}</Text>
+              <Text style={styles.followStatLabel}>Followers</Text>
+            </View>
+            <View style={styles.followStatItem}>
+              <Text style={styles.followStatNumber}>{followingCount}</Text>
+              <Text style={styles.followStatLabel}>Following</Text>
+            </View>
           </View>
         </View>
 
@@ -494,7 +407,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
-        {['My Clips', 'Badges', 'Rewards'].map((tab) => (
+        {['Clips', 'Badges', 'Rewards'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[
@@ -521,7 +434,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {activeTab === 'My Clips' && (
+        {activeTab === 'Clips' && (
           <View style={styles.clipsSection}>
             {voiceClips.length > 0 ? (
               voiceClips.map(renderVoiceClip)
@@ -530,15 +443,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
                 <Text style={styles.emptyStateTitle}>No clips yet</Text>
                 <Text style={styles.emptyStateDescription}>
-                  Start recording to share your voice with the world
+                  This user hasn't shared any clips yet
                 </Text>
-                <TouchableOpacity
-                  style={styles.recordButton}
-                  onPress={() => navigation.navigate('RecordVoice')}
-                >
-                  <Ionicons name="mic" size={20} color="#FFFFFF" />
-                  <Text style={styles.recordButtonText}>Record Now</Text>
-                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -641,19 +547,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 40,
-  },
-  editIconOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: '#FF8A00',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
   },
   profileName: {
     fontSize: 24,
@@ -883,6 +776,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  followButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  followButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  followStats: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 24,
+  },
+  followStatItem: {
+    alignItems: 'center',
+  },
+  followStatNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  followStatLabel: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
 });
 
-export default ProfileScreen;
+export default UserProfileScreen;
