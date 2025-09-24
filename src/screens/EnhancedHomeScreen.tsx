@@ -905,6 +905,30 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         </TouchableOpacity>
 
         {post.type === 'voice' && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              navigation.navigate('RecordVoice', {
+                isDuet: true,
+                originalClip: {
+                  id: post.id,
+                  phrase: post.content.phrase,
+                  user: post.user.name,
+                  language: post.user.language,
+                },
+              });
+            }}
+            accessibilityLabel="Create Duet"
+          >
+            <Ionicons
+              name="people"
+              size={20}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
+        )}
+
+        {post.type === 'voice' && (
           <TouchableOpacity style={styles.actionButton}>
             <Ionicons
               name={post.actions.isValidated ? "checkmark-circle" : "checkmark-circle-outline"}
