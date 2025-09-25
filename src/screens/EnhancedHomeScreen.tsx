@@ -36,6 +36,17 @@ const getTimeAgo = (dateString: string): string => {
   return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
 };
 
+// Helper to format large counts like 14500 -> 14.5K
+const formatCount = (count: number): string => {
+  if (count >= 1_000_000) {
+    return `${(count / 1_000_000).toFixed(count % 1_000_000 === 0 ? 0 : 1)}M`;
+  }
+  if (count >= 1_000) {
+    return `${(count / 1_000).toFixed(count % 1_000 === 0 ? 0 : 1)}K`;
+  }
+  return String(count);
+};
+
 interface User {
   id: string;
   name: string;
@@ -67,6 +78,7 @@ interface Post {
     shares: number;
     validations: number;
     reposts: number;
+    duets?: number;
   };
   actions: {
     isLiked: boolean;
@@ -150,6 +162,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 shares: clip.shares_count || 0,
                 validations: clip.validations_count || 0,
                 reposts: 0,
+                duets: clip.duets_count || 0,
               },
               actions: {
                 isLiked: false, // Will be updated based on user's likes
@@ -231,21 +244,147 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     checkFollowStatus();
   }, [user, posts]);
 
-  const handleLike = (postId: string) => {
-    setPosts(posts.map(post =>
+  // Preload current user's likes to set isLiked
+  useEffect(() => {
+    const loadLikes = async () => {
+      if (!user || posts.length === 0) return;
+      try {
+        const ids = posts.map(p => p.id);
+        const { data, error } = await supabase
+          .from('likes')
+          .select('target_id')
+          .eq('user_id', user.id)
+          .eq('target_type', 'voice_clip')
+          .in('target_id', ids);
+        if (error) {
+          console.error('Error loading likes:', error);
+          return;
+        }
+        const likedIds = new Set((data || []).map(r => r.target_id));
+        setPosts(prev => prev.map(post => ({
+          ...post,
+          actions: { ...post.actions, isLiked: likedIds.has(post.id) },
+        })));
+      } catch (e) {
+        console.error('loadLikes exception:', e);
+      }
+    };
+    loadLikes();
+  }, [user, posts.length]);
+
+  // Live update likes_count via realtime for visible clips
+  useEffect(() => {
+    if (posts.length === 0) return;
+    const ids = posts.map(p => p.id);
+    const channel = supabase
+      .channel('likes-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'likes' },
+        (payload) => {
+          const newRow: any = (payload as any).new || {};
+          const oldRow: any = (payload as any).old || {};
+          const targetId = newRow.target_id || oldRow.target_id;
+          const targetType = newRow.target_type || oldRow.target_type;
+          if (targetType !== 'voice_clip') return;
+          if (!targetId || !ids.includes(targetId)) return;
+          setPosts(prev => prev.map(post => {
+            if (post.id !== targetId) return post;
+            const delta = payload.eventType === 'INSERT' ? 1 : payload.eventType === 'DELETE' ? -1 : 0;
+            return {
+              ...post,
+              engagement: {
+                ...post.engagement,
+                likes: Math.max(0, post.engagement.likes + delta),
+              },
+            };
+          }));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'voice_clips' },
+        (payload) => {
+          const newRow: any = (payload as any).new || {};
+          if (newRow.clip_type !== 'duet' || !newRow.original_clip_id) return;
+          const originalId = newRow.original_clip_id as string;
+          if (!ids.includes(originalId)) return;
+          setPosts(prev => prev.map(post => post.id === originalId
+            ? { ...post, engagement: { ...post.engagement, duets: (post.engagement.duets || 0) + 1 } }
+            : post
+          ));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [posts.map(p => p.id).join(',')]);
+
+  const handleLike = async (postId: string) => {
+    if (!user) {
+      Alert.alert('Error', 'Please sign in to like posts');
+      return;
+    }
+
+    // Find current state
+    const targetPost = posts.find(p => p.id === postId);
+    if (!targetPost) return;
+    const currentlyLiked = targetPost.actions.isLiked;
+
+    // Optimistic UI update
+    setPosts(prev => prev.map(post =>
       post.id === postId
         ? {
             ...post,
-            actions: { ...post.actions, isLiked: !post.actions.isLiked },
+            actions: { ...post.actions, isLiked: !currentlyLiked },
             engagement: {
               ...post.engagement,
-              likes: post.actions.isLiked
-                ? post.engagement.likes - 1
-                : post.engagement.likes + 1
-            }
+              likes: !currentlyLiked ? post.engagement.likes + 1 : Math.max(0, post.engagement.likes - 1),
+            },
           }
         : post
     ));
+
+    try {
+      if (!currentlyLiked) {
+        // Like → insert
+        const { error } = await supabase
+          .from('likes')
+          .insert({
+            user_id: user.id,
+            target_type: 'voice_clip',
+            target_id: postId,
+          });
+        if (error) throw error;
+      } else {
+        // Unlike → delete
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('target_type', 'voice_clip')
+          .eq('target_id', postId);
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.error('Like toggle failed', e);
+      // Revert optimistic UI on failure
+      setPosts(prev => prev.map(post =>
+        post.id === postId
+          ? {
+              ...post,
+              actions: { ...post.actions, isLiked: currentlyLiked },
+              engagement: {
+                ...post.engagement,
+                likes: currentlyLiked ? post.engagement.likes + 1 : Math.max(0, post.engagement.likes - 1),
+              },
+            }
+          : post
+      ));
+      Alert.alert('Error', 'Failed to update like');
+    }
   };
 
   const handleValidate = (postId: string, isCorrect: boolean) => {
@@ -910,6 +1049,24 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         )}
       </View>
 
+      {/* Likes summary */}
+      {(post.engagement.likes > 0 || (post.engagement.duets ?? 0) > 0) && (
+        <View style={styles.likesSummaryRow}>
+          {post.engagement.likes > 0 && (
+            <View style={styles.summaryItem}>
+              <Ionicons name="thumbs-up" size={14} color="#2563EB" />
+              <Text style={styles.likesSummaryText}>{formatCount(post.engagement.likes)}</Text>
+            </View>
+          )}
+          {(post.engagement.duets ?? 0) > 0 && (
+            <View style={styles.summaryItem}>
+              <Ionicons name="people" size={14} color="#374151" />
+              <Text style={styles.likesSummaryText}>{formatCount(post.engagement.duets ?? 0)}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Post Actions */}
       <View style={styles.postActions}>
         <TouchableOpacity
@@ -1367,6 +1524,29 @@ const styles = StyleSheet.create({
   },
   postContent: {
     marginBottom: 16,
+  },
+  likesSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  likesSummaryText: {
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  summaryDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#D1D5DB',
+    marginHorizontal: 8,
   },
   phraseContainer: {
     marginBottom: 16,
