@@ -4,11 +4,11 @@ import { NavigationContainer, NavigationContainerRef } from '@react-navigation/n
 import { AuthProvider, useAuth } from './src/context/AuthProvider';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
-import { deepLinkHandler } from './src/utils/deepLinking';
+// import { deepLinkHandler } from './src/utils/deepLinking'; // No longer used; rely on Navigation linking prop
 import { supabase } from './src/supabaseClient';
 
 // Import all screens
@@ -42,6 +42,7 @@ import LiveStreamingScreen from './src/screens/LiveStreamingScreen';
 import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
+import InterestSelectionScreen from './src/screens/InterestSelectionScreen';
 
 // Import navigation types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -85,6 +86,7 @@ export type RootStackParamList = {
   NewPassword: { resetCode?: string } | undefined;
   VerifyEmail: { email?: string } | undefined;
   AuthCallback: { code?: string } | undefined;
+  InterestSelection: undefined;
   MainTabs: undefined;
   RecordVoice: {
     mode?: 'record' | 'upload';
@@ -204,6 +206,26 @@ const CreateModal = () => {
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>What would you like to create?</Text>
 
+          <ScrollView
+            style={styles.createModalScroll}
+            contentContainerStyle={styles.createModalScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+          <TouchableOpacity
+            style={styles.createOption}
+            onPress={() => {
+              setShowCreateModal(false);
+              navigation.navigate('CreateStory');
+            }}
+          >
+            <View style={[styles.createOptionIcon, styles.blueIcon]}>
+              <Ionicons name="images" size={24} color="#3B82F6" />
+            </View>
+            <View style={styles.createOptionContent}>
+              <Text style={styles.createOptionTitle}>Create Story</Text>
+              <Text style={styles.createOptionDescription}>Combine clips, text and media</Text>
+            </View>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -268,6 +290,8 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
+
+
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -315,6 +339,7 @@ const CreateModal = () => {
               <Text style={styles.createOptionDescription}>Check leaderboard and rewards</Text>
             </View>
           </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -469,17 +494,25 @@ const AuthStack = () => (
             animation: 'fade',
           }}
         />
+
   </Stack.Navigator>
 );
 
-const MainStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
+const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }: { initialRouteName?: keyof RootStackParamList }) => (
+  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName}>
         <Stack.Screen
           name="MainTabs"
           component={MainTabs}
           options={{
             gestureEnabled: false,
             animation: 'fade',
+          }}
+        />
+        <Stack.Screen
+          name="InterestSelection"
+          component={InterestSelectionScreen}
+          options={{
+            animation: 'slide_from_right',
           }}
         />
 
@@ -666,12 +699,93 @@ const MainStack = () => (
   </Stack.Navigator>
 );
 
+
 const AuthGate = () => {
   const { session, loading } = useAuth();
+  const [checking, setChecking] = React.useState(false);
+  const [onboardingComplete, setOnboardingComplete] = React.useState<boolean | null>(null);
 
   console.log('AuthGate: session =', !!session, 'loading =', loading);
 
-  if (loading) {
+  const checkOnboarding = React.useCallback(async () => {
+    if (!session) {
+      setOnboardingComplete(null);
+      return;
+    }
+    setChecking(true);
+    try {
+      // Try profiles flag first
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('has_completed_onboarding')
+        .eq('id', session.user.id)
+        .single();
+
+      if (error) {
+        console.error('AuthGate: profile fetch error', error);
+        setOnboardingComplete(false);
+        return;
+      }
+
+      let completed = data?.has_completed_onboarding === true;
+
+      // Fallback: if flag missing, infer from user_interests or interests array
+      if (!completed) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('interests')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!profileError && profileData?.interests && Array.isArray(profileData.interests) && profileData.interests.length > 0) {
+          completed = true;
+        }
+      }
+
+      setOnboardingComplete(completed);
+    } catch (e) {
+      console.error('AuthGate: onboarding check failed', e);
+      setOnboardingComplete(false);
+    } finally {
+      setChecking(false);
+    }
+  }, [session]);
+
+  React.useEffect(() => {
+    if (session && !loading) {
+      checkOnboarding();
+    }
+  }, [session, loading, checkOnboarding]);
+
+  // Listen for changes to the profiles table to detect when onboarding is completed
+  React.useEffect(() => {
+    if (!session) return;
+
+    const subscription = supabase
+      .channel('profiles-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          console.log('Profile updated:', payload);
+          if (payload.new.has_completed_onboarding === true) {
+            setOnboardingComplete(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [session]);
+
+  if (loading || (session && (checking || onboardingComplete === null))) {
     console.log('AuthGate: Showing loading screen');
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
@@ -680,41 +794,34 @@ const AuthGate = () => {
       </View>
     );
   }
-  // Key stacks by user so screens remount with fresh state after sign-in/sign-out
-  return session ? <MainStack key={session.user?.id || 'main'} /> : <AuthStack key="auth" />;
+
+  // No session → auth flow
+  if (!session) {
+    return <AuthStack key="auth" />;
+  }
+
+  // Session present; route based on onboarding
+  if (onboardingComplete === false) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen
+          name="InterestSelection"
+          component={InterestSelectionScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Onboarding complete → main app
+  return <MainStack key={session.user?.id || 'main'} />;
 };
 
 export default function App() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const [navigationReady, setNavigationReady] = useState(false);
 
-  // Handle incoming deep links only after navigation is ready
-  useEffect(() => {
-    if (navigationRef.current) {
-      deepLinkHandler.setNavigationRef(navigationRef.current);
-    }
-  }, []);
-
-  // Handle incoming deep links
-  useEffect(() => {
-    const handleDeepLink = (event: { url: string }) => {
-      console.log('Incoming deep link:', event.url);
-      deepLinkHandler.handleDeepLink(event.url);
-    };
-
-    // Handle initial URL if app was opened via deep link
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        console.log('Initial deep link:', url);
-        deepLinkHandler.handleDeepLink(url);
-      }
-    });
-
-    // Listen for incoming deep links
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    return () => subscription?.remove();
-  }, []);
+  // Rely solely on React Navigation's linking prop; do not manually handle deep links here
 
   // Deep linking configuration
   const linking = {
@@ -728,6 +835,7 @@ export default function App() {
         NewPassword: 'new-password',
         VerifyEmail: 'verify-email',
         AuthCallback: 'auth-callback',
+        InterestSelection: 'interests',
         MainTabs: 'main',
         RecordVoice: 'record-voice',
         TellStory: 'tell-story',
@@ -791,7 +899,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 16,
+  },
+  createModalScroll: {
+    maxHeight: 520,
+  },
+  createModalScrollContent: {
+    paddingBottom: 24,
   },
   createModalTitle: {
     fontSize: 20,

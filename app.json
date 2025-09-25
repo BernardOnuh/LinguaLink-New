@@ -8,7 +8,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
@@ -81,11 +80,11 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "af768486-4cf1-42d7-bfe9-32c0d564bf75"
+        "projectId": "dff9497b-b8cb-4001-8fe8-147af06384fa"
       },
       "EXPO_PUBLIC_SUPABASE_URL": "https://yeaurbjtntkwbbqwjutm.supabase.co",
       "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllYXVyYmp0bnRrd2JicXdqdXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2ODA1MDksImV4cCI6MjA3MTI1NjUwOX0.YdP_tWexuqvJocnVg8RzkHuT24KEMLsKx6AwzipJXtY"
     },
-    "owner": "deelad"
+    "owner": "devbyte"
   }
 }

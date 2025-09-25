@@ -36,6 +36,17 @@ const getTimeAgo = (dateString: string): string => {
   return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
 };
 
+// Helper to format large counts like 14500 -> 14.5K
+const formatCount = (count: number): string => {
+  if (count >= 1_000_000) {
+    return `${(count / 1_000_000).toFixed(count % 1_000_000 === 0 ? 0 : 1)}M`;
+  }
+  if (count >= 1_000) {
+    return `${(count / 1_000).toFixed(count % 1_000 === 0 ? 0 : 1)}K`;
+  }
+  return String(count);
+};
+
 interface User {
   id: string;
   name: string;
@@ -67,6 +78,7 @@ interface Post {
     shares: number;
     validations: number;
     reposts: number;
+    duets?: number;
   };
   actions: {
     isLiked: boolean;
@@ -147,9 +159,10 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               engagement: {
                 likes: clip.likes_count || 0,
                 comments: clip.comments_count || 0,
-                shares: Math.floor(Math.random() * 50), // Random for demo
+                shares: clip.shares_count || 0,
                 validations: clip.validations_count || 0,
-                reposts: Math.floor(Math.random() * 50), // Random for demo
+                reposts: 0,
+                duets: clip.duets_count || 0,
               },
               actions: {
                 isLiked: false, // Will be updated based on user's likes
@@ -204,16 +217,25 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
         const followingIds = new Set(followData?.map(f => f.following_id) || []);
 
-        // Update posts with correct follow status
-        setPosts(prevPosts =>
-          prevPosts.map(post => ({
-            ...post,
-            user: {
-              ...post.user,
-              isFollowing: followingIds.has(post.user.id)
+        // Update posts with correct follow status only if values change
+        setPosts(prevPosts => {
+          let changed = false;
+          const updated = prevPosts.map(post => {
+            const nextIsFollowing = followingIds.has(post.user.id);
+            if (post.user.isFollowing !== nextIsFollowing) {
+              changed = true;
+              return {
+                ...post,
+                user: {
+                  ...post.user,
+                  isFollowing: nextIsFollowing,
+                },
+              } as typeof post;
             }
-          }))
-        );
+            return post;
+          });
+          return changed ? updated : prevPosts;
+        });
       } catch (error) {
         console.error('Error in checkFollowStatus:', error);
       }
@@ -222,21 +244,147 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     checkFollowStatus();
   }, [user, posts]);
 
-  const handleLike = (postId: string) => {
-    setPosts(posts.map(post =>
+  // Preload current user's likes to set isLiked
+  useEffect(() => {
+    const loadLikes = async () => {
+      if (!user || posts.length === 0) return;
+      try {
+        const ids = posts.map(p => p.id);
+        const { data, error } = await supabase
+          .from('likes')
+          .select('target_id')
+          .eq('user_id', user.id)
+          .eq('target_type', 'voice_clip')
+          .in('target_id', ids);
+        if (error) {
+          console.error('Error loading likes:', error);
+          return;
+        }
+        const likedIds = new Set((data || []).map(r => r.target_id));
+        setPosts(prev => prev.map(post => ({
+          ...post,
+          actions: { ...post.actions, isLiked: likedIds.has(post.id) },
+        })));
+      } catch (e) {
+        console.error('loadLikes exception:', e);
+      }
+    };
+    loadLikes();
+  }, [user, posts.length]);
+
+  // Live update likes_count via realtime for visible clips
+  useEffect(() => {
+    if (posts.length === 0) return;
+    const ids = posts.map(p => p.id);
+    const channel = supabase
+      .channel('likes-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'likes' },
+        (payload) => {
+          const newRow: any = (payload as any).new || {};
+          const oldRow: any = (payload as any).old || {};
+          const targetId = newRow.target_id || oldRow.target_id;
+          const targetType = newRow.target_type || oldRow.target_type;
+          if (targetType !== 'voice_clip') return;
+          if (!targetId || !ids.includes(targetId)) return;
+          setPosts(prev => prev.map(post => {
+            if (post.id !== targetId) return post;
+            const delta = payload.eventType === 'INSERT' ? 1 : payload.eventType === 'DELETE' ? -1 : 0;
+            return {
+              ...post,
+              engagement: {
+                ...post.engagement,
+                likes: Math.max(0, post.engagement.likes + delta),
+              },
+            };
+          }));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'voice_clips' },
+        (payload) => {
+          const newRow: any = (payload as any).new || {};
+          if (newRow.clip_type !== 'duet' || !newRow.original_clip_id) return;
+          const originalId = newRow.original_clip_id as string;
+          if (!ids.includes(originalId)) return;
+          setPosts(prev => prev.map(post => post.id === originalId
+            ? { ...post, engagement: { ...post.engagement, duets: (post.engagement.duets || 0) + 1 } }
+            : post
+          ));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [posts.map(p => p.id).join(',')]);
+
+  const handleLike = async (postId: string) => {
+    if (!user) {
+      Alert.alert('Error', 'Please sign in to like posts');
+      return;
+    }
+
+    // Find current state
+    const targetPost = posts.find(p => p.id === postId);
+    if (!targetPost) return;
+    const currentlyLiked = targetPost.actions.isLiked;
+
+    // Optimistic UI update
+    setPosts(prev => prev.map(post =>
       post.id === postId
         ? {
             ...post,
-            actions: { ...post.actions, isLiked: !post.actions.isLiked },
+            actions: { ...post.actions, isLiked: !currentlyLiked },
             engagement: {
               ...post.engagement,
-              likes: post.actions.isLiked
-                ? post.engagement.likes - 1
-                : post.engagement.likes + 1
-            }
+              likes: !currentlyLiked ? post.engagement.likes + 1 : Math.max(0, post.engagement.likes - 1),
+            },
           }
         : post
     ));
+
+    try {
+      if (!currentlyLiked) {
+        // Like → insert
+        const { error } = await supabase
+          .from('likes')
+          .insert({
+            user_id: user.id,
+            target_type: 'voice_clip',
+            target_id: postId,
+          });
+        if (error) throw error;
+      } else {
+        // Unlike → delete
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('target_type', 'voice_clip')
+          .eq('target_id', postId);
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.error('Like toggle failed', e);
+      // Revert optimistic UI on failure
+      setPosts(prev => prev.map(post =>
+        post.id === postId
+          ? {
+              ...post,
+              actions: { ...post.actions, isLiked: currentlyLiked },
+              engagement: {
+                ...post.engagement,
+                likes: currentlyLiked ? post.engagement.likes + 1 : Math.max(0, post.engagement.likes - 1),
+              },
+            }
+          : post
+      ));
+      Alert.alert('Error', 'Failed to update like');
+    }
   };
 
   const handleValidate = (postId: string, isCorrect: boolean) => {
@@ -433,6 +581,27 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>Create New Post</Text>
 
+          <ScrollView
+            style={styles.createModalScroll}
+            contentContainerStyle={styles.createModalScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+          <TouchableOpacity
+            style={styles.createOption}
+            onPress={() => {
+              setShowCreateModal(false);
+              navigation.navigate('CreateStory');
+            }}
+          >
+            <View style={[styles.createOptionIcon, styles.blueIcon]}>
+              <Ionicons name="images" size={24} color="#3B82F6" />
+            </View>
+            <View style={styles.createOptionContent}>
+              <Text style={styles.createOptionTitle}>Create Story</Text>
+              <Text style={styles.createOptionDescription}>Combine clips, text and media</Text>
+            </View>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -497,6 +666,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
+
+
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -528,6 +699,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               <Text style={styles.createOptionDescription}>Join language learning games</Text>
             </View>
           </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -807,7 +979,15 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         {post.type === 'voice' && (
           <>
             <View style={styles.phraseContainer}>
-              <Text style={styles.phrase}>{post.content.phrase}</Text>
+              <Text
+                style={styles.phrase}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+              >
+                {post.content.phrase}
+              </Text>
               <Text style={styles.translation}>{post.content.translation}</Text>
             </View>
             {post.content.audioWaveform && renderWaveform(post.content.audioWaveform)}
@@ -869,6 +1049,24 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         )}
       </View>
 
+      {/* Likes summary */}
+      {(post.engagement.likes > 0 || (post.engagement.duets ?? 0) > 0) && (
+        <View style={styles.likesSummaryRow}>
+          {post.engagement.likes > 0 && (
+            <View style={styles.summaryItem}>
+              <Ionicons name="thumbs-up" size={14} color="#2563EB" />
+              <Text style={styles.likesSummaryText}>{formatCount(post.engagement.likes)}</Text>
+            </View>
+          )}
+          {(post.engagement.duets ?? 0) > 0 && (
+            <View style={styles.summaryItem}>
+              <Ionicons name="people" size={14} color="#374151" />
+              <Text style={styles.likesSummaryText}>{formatCount(post.engagement.duets ?? 0)}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Post Actions */}
       <View style={styles.postActions}>
         <TouchableOpacity
@@ -876,42 +1074,75 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           onPress={() => handleLike(post.id)}
         >
           <Ionicons
-            name={post.actions.isLiked ? "heart" : "heart-outline"}
+            name={post.actions.isLiked ? "thumbs-up" : "thumbs-up-outline"}
             size={20}
-            color={post.actions.isLiked ? "#EF4444" : "#6B7280"}
+            color={post.actions.isLiked ? "#2563EB" : "#6B7280"}
           />
-          <Text style={[styles.actionText, post.actions.isLiked && styles.likedText]}>
-            {post.engagement.likes}
-          </Text>
+          <Text style={[styles.actionText, post.actions.isLiked && styles.likedText]}>Like</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="chatbubble-outline" size={20} color="#6B7280" />
-          <Text style={styles.actionText}>{post.engagement.comments}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleRepost(post.id)}
-        >
-          <Ionicons
-            name={post.actions.isReposted ? "repeat" : "repeat-outline"}
-            size={20}
-            color={post.actions.isReposted ? "#10B981" : "#6B7280"}
-          />
-          <Text style={[styles.actionText, post.actions.isReposted && styles.repostedText]}>
-            {post.engagement.reposts}
-          </Text>
-        </TouchableOpacity>
 
         {post.type === 'voice' && (
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              navigation.navigate('RecordVoice', {
+                isDuet: true,
+                originalClip: {
+                  id: post.id,
+                  phrase: post.content.phrase,
+                  user: post.user.name,
+                  language: post.user.language,
+                },
+              });
+            }}
+            accessibilityLabel="Create Duet"
+          >
+            <Ionicons
+              name="people"
+              size={20}
+              color="#6B7280"
+            />
+            <Text style={styles.actionText}>Duet</Text>
+          </TouchableOpacity>
+        )}
+        {post.type === 'voice' && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              navigation.navigate('RecordVoice', {
+                isRemix: true,
+                originalClip: {
+                  id: post.id,
+                  phrase: post.content.phrase,
+                  user: post.user.name,
+                  language: post.user.language,
+                },
+              });
+            }}
+            accessibilityLabel="Remix"
+          >
+            <Ionicons name="repeat" size={20} color="#6B7280" />
+            <Text style={styles.actionText}>Remix</Text>
+          </TouchableOpacity>
+        )}
+
+        {post.type === 'voice' && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() =>
+              navigation.navigate('Validation', {
+                clipId: post.id,
+                language: post.user.language,
+              })
+            }
+          >
             <Ionicons
               name={post.actions.isValidated ? "checkmark-circle" : "checkmark-circle-outline"}
               size={20}
               color={post.actions.needsValidation ? "#F59E0B" : "#10B981"}
             />
-            <Text style={styles.actionText}>{post.engagement.validations}</Text>
+            <Text style={styles.actionText}>Validate</Text>
           </TouchableOpacity>
         )}
 
@@ -920,6 +1151,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           onPress={() => setShowShareModal(post.id)}
         >
           <Ionicons name="share-outline" size={20} color="#6B7280" />
+          <Text style={styles.actionText}>Share</Text>
         </TouchableOpacity>
       </View>
 
@@ -1293,6 +1525,29 @@ const styles = StyleSheet.create({
   postContent: {
     marginBottom: 16,
   },
+  likesSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  likesSummaryText: {
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  summaryDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#D1D5DB',
+    marginHorizontal: 8,
+  },
   phraseContainer: {
     marginBottom: 16,
     alignItems: 'center',
@@ -1451,7 +1706,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   likedText: {
-    color: '#EF4444',
+    color: '#2563EB',
   },
   repostedText: {
     color: '#10B981',
@@ -1489,7 +1744,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 16,
+  },
+  createModalScroll: {
+    maxHeight: 520,
+  },
+  createModalScrollContent: {
+    paddingBottom: 24,
   },
   createModalTitle: {
     fontSize: 20,
@@ -1523,6 +1784,9 @@ const styles = StyleSheet.create({
   },
   redIcon: {
     backgroundColor: '#FEE2E2',
+  },
+  blueIcon: {
+    backgroundColor: '#EFF6FF',
   },
   createOptionContent: {
     flex: 1,
