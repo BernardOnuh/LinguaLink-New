@@ -79,6 +79,7 @@ interface Post {
     validations: number;
     reposts: number;
     duets?: number;
+    remixes?: number;
   };
   actions: {
     isLiked: boolean;
@@ -163,6 +164,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 validations: clip.validations_count || 0,
                 reposts: 0,
                 duets: clip.duets_count || 0,
+                remixes: clip.remixes_count || 0,
               },
               actions: {
                 isLiked: false, // Will be updated based on user's likes
@@ -272,7 +274,34 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     loadLikes();
   }, [user, posts.length]);
 
-  // Live update likes_count via realtime for visible clips
+  // Preload current user's validations to set isValidated
+  useEffect(() => {
+    const loadValidations = async () => {
+      if (!user || posts.length === 0) return;
+      try {
+        const ids = posts.map(p => p.id);
+        const { data, error } = await supabase
+          .from('validations')
+          .select('voice_clip_id')
+          .eq('validator_id', user.id)
+          .in('voice_clip_id', ids);
+        if (error) {
+          console.error('Error loading validations:', error);
+          return;
+        }
+        const validatedIds = new Set((data || []).map(r => r.voice_clip_id));
+        setPosts(prev => prev.map(post => ({
+          ...post,
+          actions: { ...post.actions, isValidated: validatedIds.has(post.id) },
+        })));
+      } catch (e) {
+        console.error('loadValidations exception:', e);
+      }
+    };
+    loadValidations();
+  }, [user, posts.length]);
+
+  // Live update counts and user state via realtime for visible clips
   useEffect(() => {
     if (posts.length === 0) return;
     const ids = posts.map(p => p.id);
@@ -313,6 +342,40 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             ? { ...post, engagement: { ...post.engagement, duets: (post.engagement.duets || 0) + 1 } }
             : post
           ));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'validations' },
+        (payload) => {
+          const newRow: any = (payload as any).new || {};
+          const clipId = newRow.voice_clip_id as string;
+          if (!clipId || !ids.includes(clipId)) return;
+          setPosts(prev => prev.map(post => {
+            if (post.id !== clipId) return post;
+            return {
+              ...post,
+              engagement: { ...post.engagement, validations: (post.engagement.validations || 0) + 1 },
+              actions: { ...post.actions, isValidated: newRow.validator_id === user?.id ? true : post.actions.isValidated },
+            };
+          }));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'validations' },
+        (payload) => {
+          const oldRow: any = (payload as any).old || {};
+          const clipId = oldRow.voice_clip_id as string;
+          if (!clipId || !ids.includes(clipId)) return;
+          setPosts(prev => prev.map(post => {
+            if (post.id !== clipId) return post;
+            return {
+              ...post,
+              engagement: { ...post.engagement, validations: Math.max(0, (post.engagement.validations || 0) - 1) },
+              actions: { ...post.actions, isValidated: oldRow.validator_id === user?.id ? false : post.actions.isValidated },
+            };
+          }));
         }
       )
       .subscribe();
@@ -387,25 +450,60 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
-  const handleValidate = (postId: string, isCorrect: boolean) => {
-    setPosts(posts.map(post =>
+  const handleValidate = async (postId: string, isCorrect: boolean) => {
+    if (!user) {
+      Alert.alert('Error', 'Please sign in to validate clips');
+      return;
+    }
+
+    // Optimistic UI using functional update
+    setPosts(prev => prev.map(post =>
       post.id === postId
         ? {
             ...post,
             actions: { ...post.actions, isValidated: true },
             engagement: {
               ...post.engagement,
-              validations: post.engagement.validations + 1
-            }
+              validations: post.engagement.validations + 1,
+            },
           }
         : post
     ));
 
-    Alert.alert(
-      'Validation Submitted',
-      `Thank you for validating this pronunciation as ${isCorrect ? 'correct' : 'needs improvement'}.`
-    );
-    setShowMoreOptions(null);
+    try {
+      const { error } = await supabase
+        .from('validations')
+        .insert({
+          voice_clip_id: postId,
+          validator_id: user.id,
+          validation_type: 'pronunciation',
+          rating: isCorrect ? 4 : 2,
+          is_approved: isCorrect,
+        });
+      if (error) throw error;
+
+      Alert.alert(
+        'Validation Submitted',
+        `Thank you for validating this pronunciation as ${isCorrect ? 'correct' : 'needs improvement'}.`
+      );
+    } catch (e) {
+      // Revert on error
+      setPosts(prev => prev.map(post =>
+        post.id === postId
+          ? {
+              ...post,
+              actions: { ...post.actions, isValidated: false },
+              engagement: {
+                ...post.engagement,
+                validations: Math.max(0, post.engagement.validations - 1),
+              },
+            }
+          : post
+      ));
+      Alert.alert('Error', 'Failed to submit validation');
+    } finally {
+      setShowMoreOptions(null);
+    }
   };
 
   const handleRepost = (postId: string) => {
@@ -1050,7 +1148,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       </View>
 
       {/* Likes summary */}
-      {(post.engagement.likes > 0 || (post.engagement.duets ?? 0) > 0) && (
+      {(post.engagement.likes > 0 || (post.engagement.duets ?? 0) > 0 || (post.engagement.remixes ?? 0) > 0 || post.engagement.validations > 0) && (
         <View style={styles.likesSummaryRow}>
           {post.engagement.likes > 0 && (
             <View style={styles.summaryItem}>
@@ -1062,6 +1160,18 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             <View style={styles.summaryItem}>
               <Ionicons name="people" size={14} color="#374151" />
               <Text style={styles.likesSummaryText}>{formatCount(post.engagement.duets ?? 0)}</Text>
+            </View>
+          )}
+          {(post.engagement.remixes ?? 0) > 0 && (
+            <View style={styles.summaryItem}>
+              <Ionicons name="repeat" size={14} color="#374151" />
+              <Text style={styles.likesSummaryText}>{formatCount(post.engagement.remixes ?? 0)}</Text>
+            </View>
+          )}
+          {post.engagement.validations > 0 && (
+            <View style={styles.summaryItem}>
+              <Ionicons name="checkmark-circle" size={14} color="#D97706" />
+              <Text style={styles.likesSummaryText}>{formatCount(post.engagement.validations)}</Text>
             </View>
           )}
         </View>
