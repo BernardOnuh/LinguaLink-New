@@ -20,6 +20,7 @@ import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import NewPasswordScreen from './src/screens/NewPasswordScreen';
 import EnhancedHomeScreen from './src/screens/EnhancedHomeScreen';
 import RecordVoiceScreen from './src/screens/RecordVoiceScreen';
+import RecordVideoScreen from './src/screens/RecordVideoScreen';
 import TellStoryScreen from './src/screens/TellStoryScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import RewardsScreen from './src/screens/RewardsScreen';
@@ -527,7 +528,7 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
         />
         <Stack.Screen
           name="RecordVideo"
-          component={RecordVoiceScreen} // You can create a separate RecordVideoScreen
+          component={RecordVideoScreen}
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
@@ -838,6 +839,7 @@ export default function App() {
         InterestSelection: 'interests',
         MainTabs: 'main',
         RecordVoice: 'record-voice',
+        RecordVideo: 'record-video',
         TellStory: 'tell-story',
         Validation: 'validation',
         Settings: 'settings',
