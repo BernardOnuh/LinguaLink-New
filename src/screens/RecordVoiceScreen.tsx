@@ -196,7 +196,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         setIsRecording(false);
         setHasRecorded(true);
         setPhrase(getPromptText());
-        setTranslation('Translation will be added later');
+        setTranslation('');
         Alert.alert('Recording Complete', 'Your voice clip has been recorded!');
       } catch (error) {
         console.error('Error stopping recording:', error);
@@ -296,7 +296,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         .insert({
           user_id: authUser.id,
           phrase: finalPhrase,
-          translation: translation || 'Translation will be added later',
+          translation: translation || '',
           audio_url: uploadResult.url, // Use the cloud URL
           language: selectedLanguage.name,
           dialect: selectedLanguage.dialect || null,

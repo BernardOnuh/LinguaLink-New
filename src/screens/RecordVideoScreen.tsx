@@ -118,7 +118,7 @@ const RecordVideoScreen: React.FC<Props> = ({ navigation }) => {
         .from('video_clips')
         .insert({
           phrase: finalPrompt,
-          translation: 'Translation will be added later',
+          translation: '',
           video_url: upload.url,
           thumbnail_url: null,
           language: selectedLanguage.name,
