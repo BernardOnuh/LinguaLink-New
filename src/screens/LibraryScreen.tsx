@@ -178,6 +178,53 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const confirmDeleteClip = (clip: VoiceClip) => {
+    Alert.alert(
+      'Delete Clip',
+      'Are you sure you want to delete this clip? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => handleDeleteClip(clip) },
+      ]
+    );
+  };
+
+  const handleDeleteClip = async (clip: VoiceClip) => {
+    if (!user) return;
+
+    try {
+      // Optimistic UI: remove locally first
+      setVoiceClips(prev => prev.filter(c => c.id !== clip.id));
+
+      // Delete DB row
+      const { error } = await supabase
+        .from('voice_clips')
+        .delete()
+        .eq('id', clip.id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error deleting voice clip:', error);
+        // Revert UI on failure
+        setVoiceClips(prev => [clip, ...prev]);
+        Alert.alert('Error', 'Failed to delete clip');
+        return;
+      }
+
+      // Attempt storage cleanup if path-like audio_url is present
+      if (clip.audio_url && !/^https?:\/\//i.test(clip.audio_url)) {
+        try {
+          // best-effort; ignore failure
+          await supabase.storage.from('voice-clips').remove([clip.audio_url]);
+        } catch {}
+      }
+    } catch (e) {
+      console.error('Delete clip exception:', e);
+      // Reload to be safe
+      fetchVoiceClips();
+    }
+  };
+
   const renderVoiceClip = (clip: VoiceClip) => (
     <View key={clip.id} style={styles.clipCard}>
       <View style={styles.clipHeader}>
@@ -229,7 +276,10 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
           <Ionicons name="share-outline" size={16} color="#6B7280" />
           <Text style={styles.actionText}>Share</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => confirmDeleteClip(clip)}
+        >
           <Ionicons name="trash-outline" size={16} color="#EF4444" />
           <Text style={[styles.actionText, styles.deleteText]}>Delete</Text>
         </TouchableOpacity>
