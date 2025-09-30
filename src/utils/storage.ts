@@ -7,6 +7,10 @@ export interface UploadResult {
   error?: string;
 }
 
+export interface UploadVideoResult extends UploadResult {
+  thumbnailUrl?: string;
+}
+
 /**
  * Upload an audio file to Supabase Storage
  * @param fileUri - Local file URI from Expo AV recording
@@ -153,5 +157,58 @@ export const deleteAudioFile = async (filePath: string): Promise<boolean> => {
   } catch (error) {
     console.error('Error deleting audio file:', error);
     return false;
+  }
+};
+
+/**
+ * Upload a video file to Supabase Storage (bucket: videos)
+ */
+export const uploadVideoFile = async (
+  fileUri: string,
+  userId: string,
+  fileName?: string,
+  contentType: string = 'video/mp4'
+): Promise<UploadVideoResult> => {
+  try {
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 15);
+    const finalFileName = fileName || `video_${timestamp}_${randomId}.mp4`;
+    const storagePath = `${userId}/${finalFileName}`;
+
+    const base64Data = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+
+    const { error } = await supabase.storage
+      .from('videos')
+      .upload(storagePath, bytes, { contentType, cacheControl: '3600', upsert: false });
+    if (error) return { success: false, error: error.message };
+
+    const { data: urlData } = supabase.storage.from('videos').getPublicUrl(storagePath);
+    return { success: true, url: urlData.publicUrl };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+};
+
+export const getPlayableVideoUrl = async (
+  storedUrlOrPath: string,
+  expiresInSeconds: number = 60 * 60
+): Promise<string | null> => {
+  try {
+    if (!storedUrlOrPath) return null;
+    if (/^https?:\/\//i.test(storedUrlOrPath)) return storedUrlOrPath;
+    const { data: publicData } = supabase.storage.from('videos').getPublicUrl(storedUrlOrPath);
+    if (publicData?.publicUrl) return publicData.publicUrl;
+    const { data: signedData, error } = await supabase.storage
+      .from('videos')
+      .createSignedUrl(storedUrlOrPath, expiresInSeconds);
+    if (error) return null;
+    return signedData?.signedUrl || null;
+  } catch (e) {
+    return null;
   }
 };
