@@ -47,6 +47,26 @@ const formatCount = (count: number): string => {
   return String(count);
 };
 
+// Helper to extract original prompt from nested remix chains
+const extractOriginalPrompt = (phrase: string) => {
+  // If the phrase contains nested remix text, extract the original
+  if (phrase.includes('"Create your own version of "') || phrase.includes('"Respond to "')) {
+    // Find the innermost quoted text (the original prompt)
+    const matches = phrase.match(/"([^"]*)"(?: by [^"]*)?$/);
+    if (matches && matches[1]) {
+      // Check if this is the actual original (not another nested remix)
+      const extracted = matches[1];
+      if (!extracted.includes('"Create your own version of "') && !extracted.includes('"Respond to "')) {
+        return extracted;
+      }
+      // If it's still nested, try to find the deepest level
+      return extractOriginalPrompt(extracted);
+    }
+  }
+  // If no nested text found, return the phrase as-is
+  return phrase;
+};
+
 interface User {
   id: string;
   name: string;
@@ -1084,7 +1104,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 adjustsFontSizeToFit
                 minimumFontScale={0.85}
               >
-                {post.content.phrase}
+                {extractOriginalPrompt(post.content.phrase || '')}
               </Text>
               <Text style={styles.translation}>{post.content.translation}</Text>
             </View>
@@ -1125,7 +1145,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               </View>
             </View>
             <View style={styles.videoInfo}>
-              <Text style={styles.videoPhrase}>{post.content.phrase}</Text>
+              <Text style={styles.videoPhrase}>{extractOriginalPrompt(post.content.phrase || '')}</Text>
               <Text style={styles.videoTranslation}>{post.content.translation}</Text>
             </View>
           </View>

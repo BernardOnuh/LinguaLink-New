@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Platform,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
@@ -77,6 +78,8 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [phrase, setPhrase] = useState('');
   const [translation, setTranslation] = useState('');
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState('');
 
   // Audio recording state
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -376,11 +379,16 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const getPromptText = () => {
+    // If user has a custom prompt (whether editing or not), use that
+    if (customPrompt.trim()) {
+      return customPrompt.trim();
+    }
+
     if (isRemix && originalClip) {
       return `Create your own version of "${originalClip.phrase}" or say it in your dialect`;
     }
     if (isDuet && originalClip) {
-      return `Respond to "${originalClip.phrase}" by ${originalClip.user}`;
+      return `Respond to "${originalClip.phrase}"`;
     }
     return "Say 'Welcome to our home' in your language";
   };
@@ -472,7 +480,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
             </View>
             <Text style={styles.originalClipPhrase}>"{originalClip.phrase}"</Text>
             <Text style={styles.originalClipMeta}>
-              by {originalClip.user} • {originalClip.language}
+              {originalClip.language}
             </Text>
           </View>
         )}
@@ -497,10 +505,61 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
         {/* Prompt Card */}
         <View style={styles.promptCard}>
-          <Text style={styles.promptTitle}>
-            {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Today\'s Prompt'}
-          </Text>
-          <Text style={styles.promptText}>{getPromptText()}</Text>
+          <View style={styles.promptHeader}>
+            <Text style={styles.promptTitle}>
+              {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Today\'s Prompt'}
+            </Text>
+            <View style={styles.promptActions}>
+              {!isEditingPrompt && customPrompt.trim() && (
+                <TouchableOpacity
+                  style={styles.resetPromptButton}
+                  onPress={() => {
+                    setCustomPrompt('');
+                  }}
+                >
+                  <Ionicons name="refresh-outline" size={16} color="#6B7280" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.editPromptButton}
+                onPress={() => {
+                  if (isEditingPrompt) {
+                    // Save the custom prompt
+                    setIsEditingPrompt(false);
+                  } else {
+                    // Start editing - initialize with current prompt
+                    const currentPrompt = customPrompt.trim() ||
+                      (isRemix && originalClip ? `Create your own version of "${originalClip.phrase}" or say it in your dialect` :
+                       isDuet && originalClip ? `Respond to "${originalClip.phrase}"` :
+                       "Say 'Welcome to our home' in your language");
+                    setCustomPrompt(currentPrompt);
+                    setIsEditingPrompt(true);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={isEditingPrompt ? "checkmark" : "create-outline"}
+                  size={16}
+                  color="#D97706"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {isEditingPrompt ? (
+            <TextInput
+              style={styles.promptInput}
+              value={customPrompt}
+              onChangeText={setCustomPrompt}
+              placeholder="Enter your custom prompt..."
+              multiline
+              textAlignVertical="top"
+              autoFocus
+            />
+          ) : (
+            <Text style={styles.promptText}>{getPromptText()}</Text>
+          )}
+
           <Text style={styles.promptSubtext}>
             {isRemix || isDuet ? 'Express it in your own way!' : 'Optional - or record anything you\'d like!'}
           </Text>
@@ -730,11 +789,42 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 16,
   },
+  promptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   promptTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#D97706',
-    marginBottom: 8,
+    flex: 1,
+  },
+  promptActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editPromptButton: {
+    padding: 4,
+    borderRadius: 4,
+  },
+  resetPromptButton: {
+    padding: 4,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  promptInput: {
+    fontSize: 16,
+    color: '#92400E',
+    marginBottom: 4,
+    lineHeight: 22,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    minHeight: 60,
   },
   promptText: {
     fontSize: 16,

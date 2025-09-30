@@ -20,6 +20,26 @@ import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
+// Helper to extract original prompt from nested remix chains
+const extractOriginalPrompt = (phrase: string) => {
+  // If the phrase contains nested remix text, extract the original
+  if (phrase.includes('"Create your own version of "') || phrase.includes('"Respond to "')) {
+    // Find the innermost quoted text (the original prompt)
+    const matches = phrase.match(/"([^"]*)"(?: by [^"]*)?$/);
+    if (matches && matches[1]) {
+      // Check if this is the actual original (not another nested remix)
+      const extracted = matches[1];
+      if (!extracted.includes('"Create your own version of "') && !extracted.includes('"Respond to "')) {
+        return extracted;
+      }
+      // If it's still nested, try to find the deepest level
+      return extractOriginalPrompt(extracted);
+    }
+  }
+  // If no nested text found, return the phrase as-is
+  return phrase;
+};
+
 type Props = NativeStackScreenProps<RootStackParamList, 'Validation'>;
 
 interface ValidationClip {
@@ -317,7 +337,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
 
         <View style={styles.phraseContainer}>
-          <Text style={styles.phrase}>{clip?.phrase || '—'}</Text>
+          <Text style={styles.phrase}>{extractOriginalPrompt(clip?.phrase || '—')}</Text>
           {mockValidationClip.context && (
             <Text style={styles.context}>{mockValidationClip.context}</Text>
           )}
