@@ -1,5 +1,5 @@
 // src/screens/LibraryScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,48 @@ import {
   ScrollView,
   StatusBar,
   Dimensions,
+  Image,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
+import { supabase } from '../supabaseClient';
+import { useAuth } from '../context/AuthProvider';
+import { getPlayableAudioUrl } from '../utils/storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
+
+// Helper function to format time ago
+const getTimeAgo = (dateString: string): string => {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return 'just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
+};
+
+interface VoiceClip {
+  id: string;
+  phrase: string;
+  translation?: string;
+  audio_url?: string;
+  duration?: number;
+  created_at: string;
+  likes_count: number;
+  comments_count: number;
+  validations_count: number;
+  is_validated: boolean;
+}
 
 type LibraryScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Library'>,
@@ -29,11 +63,184 @@ interface Props {
 
 const LibraryScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<'Voice Clips' | 'AI Stories'>('Voice Clips');
+  const [voiceClips, setVoiceClips] = useState<VoiceClip[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
+  const { user } = useAuth();
+
+  // Fetch user's voice clips
+  const fetchVoiceClips = useCallback(async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const { data: clips, error } = await supabase
+        .from('voice_clips')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching voice clips:', error);
+        return;
+      }
+
+      setVoiceClips(clips || []);
+    } catch (error) {
+      console.error('Error in fetchVoiceClips:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  // Initial load
+  useEffect(() => {
+    fetchVoiceClips();
+  }, [fetchVoiceClips]);
+
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchVoiceClips();
+    }, [fetchVoiceClips])
+  );
+
+  // Cleanup audio when component unmounts
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
+
+  const handleAudioPlay = async (clipId: string, audioUrl?: string) => {
+    if (!audioUrl) {
+      Alert.alert('No Audio', 'This clip does not have an audio file');
+      return;
+    }
+
+    try {
+      // If this clip is already playing, stop it
+      if (currentPlayingId === clipId && sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        setSound(null);
+        setCurrentPlayingId(null);
+        return;
+      }
+
+      // Stop any currently playing audio
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        setSound(null);
+      }
+
+      // Set loading state
+      setLoadingAudioId(clipId);
+
+      // Get playable URL
+      const resolvedUrl = await getPlayableAudioUrl(audioUrl);
+      if (!resolvedUrl) {
+        setLoadingAudioId(null);
+        Alert.alert('Error', 'Failed to load audio file');
+        return;
+      }
+
+      // Create and play the audio
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: resolvedUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
+      setCurrentPlayingId(clipId);
+      setLoadingAudioId(null);
+
+      // Set up playback status monitoring
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
+          setCurrentPlayingId(null);
+        }
+      });
+
+      console.log('Playing audio:', resolvedUrl);
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      setLoadingAudioId(null);
+      Alert.alert('Error', 'Failed to play audio file');
+    }
+  };
+
+  const renderVoiceClip = (clip: VoiceClip) => (
+    <View key={clip.id} style={styles.clipCard}>
+      <View style={styles.clipHeader}>
+        <View style={styles.clipInfo}>
+          <Text style={styles.clipPhrase}>{clip.phrase}</Text>
+          {clip.translation && (
+            <Text style={styles.clipTranslation}>{clip.translation}</Text>
+          )}
+          <Text style={styles.clipDate}>{getTimeAgo(clip.created_at)}</Text>
+        </View>
+        <View style={styles.clipStats}>
+          <View style={styles.statItem}>
+            <Ionicons name="thumbs-up" size={14} color="#6B7280" />
+            <Text style={styles.statText}>{clip.likes_count}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="chatbubble" size={14} color="#6B7280" />
+            <Text style={styles.statText}>{clip.comments_count}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="checkmark-circle" size={14} color={clip.is_validated ? "#10B981" : "#6B7280"} />
+            <Text style={styles.statText}>{clip.validations_count}</Text>
+          </View>
+        </View>
+      </View>
+
+      {clip.audio_url && (
+        <View style={styles.audioSection}>
+          <TouchableOpacity
+            style={styles.playButton}
+            onPress={() => handleAudioPlay(clip.id, clip.audio_url)}
+          >
+            {loadingAudioId === clip.id ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : currentPlayingId === clip.id ? (
+              <Ionicons name="pause" size={20} color="#FFFFFF" />
+            ) : (
+              <Ionicons name="play" size={20} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+          <Text style={styles.durationText}>
+            {clip.duration ? `${Math.floor(clip.duration / 60)}:${(clip.duration % 60).toString().padStart(2, '0')}` : '0:00'}
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.clipActions}>
+        <TouchableOpacity style={styles.actionButton}>
+          <Ionicons name="share-outline" size={16} color="#6B7280" />
+          <Text style={styles.actionText}>Share</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton}>
+          <Ionicons name="trash-outline" size={16} color="#EF4444" />
+          <Text style={[styles.actionText, styles.deleteText]}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
@@ -42,7 +249,7 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.editButton}>Edit</Text>
           </TouchableOpacity>
         </View>
-        
+
         {/* Tab Selector */}
         <View style={styles.tabSelector}>
           <TouchableOpacity
@@ -56,10 +263,10 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
               styles.tabButtonText,
               activeTab === 'Voice Clips' && styles.activeTabButtonText
             ]}>
-              Voice Clips (0)
+              Voice Clips ({voiceClips.length})
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[
               styles.tabButton,
@@ -85,22 +292,32 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.sectionDescription}>
               Voice clips you've shared to help preserve languages
             </Text>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.recordButton}
               onPress={() => navigation.navigate('RecordVoice')}
             >
               <Text style={styles.recordButtonText}>Record New Clip</Text>
             </TouchableOpacity>
 
-            {/* Empty State */}
-            <View style={styles.emptyState}>
-              <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
-              <Text style={styles.emptyStateTitle}>No voice clips yet</Text>
-              <Text style={styles.emptyStateDescription}>
-                Start recording to build your personal language archive
-              </Text>
-            </View>
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#FF8A00" />
+                <Text style={styles.loadingText}>Loading your voice clips...</Text>
+              </View>
+            ) : voiceClips.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="mic-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyStateTitle}>No voice clips yet</Text>
+                <Text style={styles.emptyStateDescription}>
+                  Start recording to build your personal language archive
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.clipsContainer}>
+                {voiceClips.map(renderVoiceClip)}
+              </View>
+            )}
           </View>
         )}
 
@@ -110,8 +327,8 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.sectionDescription}>
               Stories you've created with AI animation
             </Text>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.createStoryButton}
               onPress={() => navigation.navigate('TellStory')}
             >
@@ -245,6 +462,114 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     maxWidth: 250,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 16,
+    fontWeight: '500',
+  },
+  clipsContainer: {
+    marginTop: 20,
+  },
+  clipCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  clipHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  clipInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  clipPhrase: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  clipTranslation: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  clipDate: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  clipStats: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  audioSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    paddingVertical: 8,
+  },
+  playButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FF8A00',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  durationText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  clipActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F8F9FA',
+  },
+  actionText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  deleteText: {
+    color: '#EF4444',
   },
 });
 
