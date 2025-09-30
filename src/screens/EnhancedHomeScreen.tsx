@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,14 @@ import {
   TextInput,
   Image,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { getPlayableAudioUrl } from '../utils/storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
@@ -123,94 +125,109 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuth();
 
-       // Fetch real voice clips and users from database
-  useEffect(() => {
-    const fetchRealContent = async () => {
+  // Fetch real voice clips and users from database
+  const fetchRealContent = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
       setIsLoading(true);
-      try {
-        // Fetch voice clips with user information
-        const { data: voiceClips, error: clipsError } = await supabase
-          .from('voice_clips')
-          .select(`
-            *,
-            profiles!voice_clips_user_id_fkey (
-              id,
-              full_name,
-              username,
-              primary_language,
-              avatar_url,
-              bio
-            )
-          `)
-          .order('created_at', { ascending: false })
-          .limit(20);
+    }
 
-        if (clipsError) {
-          console.error('Error fetching voice clips:', clipsError);
-          return;
-        }
+    try {
+      // Fetch voice clips with user information
+      const { data: voiceClips, error: clipsError } = await supabase
+        .from('voice_clips')
+        .select(`
+          *,
+          profiles!voice_clips_user_id_fkey (
+            id,
+            full_name,
+            username,
+            primary_language,
+            avatar_url,
+            bio
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(20);
 
-        if (voiceClips && voiceClips.length > 0) {
-          // Transform voice clips to posts
-          const transformedPosts: Post[] = voiceClips.map((clip, index) => {
-            const user = clip.profiles;
-            return {
-              id: clip.id,
-              type: 'voice' as const,
-              user: {
-                id: user?.id || 'unknown',
-                name: user?.full_name || 'Anonymous',
-                username: user?.username || 'user',
-                avatar: '👤',
-                avatarUrl: user?.avatar_url || undefined,
-                language: user?.primary_language || 'English',
-                isFollowing: false, // Will be updated below
-                followers: Math.floor(Math.random() * 1000) + 10, // Random for demo
-                isVerified: Math.random() > 0.7, // Random for demo
-              },
-              content: {
-                phrase: clip.phrase || 'Audio clip',
-                translation: clip.translation || '',
-                audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70], // Placeholder waveform
-                audioUrl: clip.audio_url,
-                duration: clip.duration ? `${Math.floor(clip.duration / 60)}:${(clip.duration % 60).toString().padStart(2, '0')}` : '0:00',
-              },
-              engagement: {
-                likes: clip.likes_count || 0,
-                comments: clip.comments_count || 0,
-                shares: clip.shares_count || 0,
-                validations: clip.validations_count || 0,
-                reposts: 0,
-                duets: clip.duets_count || 0,
-                remixes: clip.remixes_count || 0,
-              },
-              actions: {
-                isLiked: false, // Will be updated based on user's likes
-                isValidated: clip.is_validated || false,
-                isReposted: false, // Will be updated based on user's reposts
-                needsValidation: !clip.is_validated,
-              },
-              timeAgo: getTimeAgo(clip.created_at),
-            };
-          });
-
-          setPosts(transformedPosts);
-          console.log('Real voice clips fetched:', transformedPosts.length);
-        } else {
-          console.log('No voice clips found in database');
-          setPosts([]);
-        }
-      } catch (error) {
-        console.error('Error in fetchRealContent:', error);
-      } finally {
-        setIsLoading(false);
+      if (clipsError) {
+        console.error('Error fetching voice clips:', clipsError);
+        return;
       }
-    };
 
-    fetchRealContent();
+      if (voiceClips && voiceClips.length > 0) {
+        // Transform voice clips to posts
+        const transformedPosts: Post[] = voiceClips.map((clip, index) => {
+          const user = clip.profiles;
+          return {
+            id: clip.id,
+            type: 'voice' as const,
+            user: {
+              id: user?.id || 'unknown',
+              name: user?.full_name || 'Anonymous',
+              username: user?.username || 'user',
+              avatar: '👤',
+              avatarUrl: user?.avatar_url || undefined,
+              language: user?.primary_language || 'English',
+              isFollowing: false, // Will be updated below
+              followers: Math.floor(Math.random() * 1000) + 10, // Random for demo
+              isVerified: Math.random() > 0.7, // Random for demo
+            },
+            content: {
+              phrase: clip.phrase || 'Audio clip',
+              translation: clip.translation || '',
+              audioWaveform: [20, 40, 60, 80, 60, 40, 70, 90, 50, 30, 60, 80, 40, 20, 50, 70], // Placeholder waveform
+              audioUrl: clip.audio_url,
+              duration: clip.duration ? `${Math.floor(clip.duration / 60)}:${(clip.duration % 60).toString().padStart(2, '0')}` : '0:00',
+            },
+            engagement: {
+              likes: clip.likes_count || 0,
+              comments: clip.comments_count || 0,
+              shares: clip.shares_count || 0,
+              validations: clip.validations_count || 0,
+              reposts: 0,
+              duets: clip.duets_count || 0,
+              remixes: clip.remixes_count || 0,
+            },
+            actions: {
+              isLiked: false, // Will be updated based on user's likes
+              isValidated: clip.is_validated || false,
+              isReposted: false, // Will be updated based on user's reposts
+              needsValidation: !clip.is_validated,
+            },
+            timeAgo: getTimeAgo(clip.created_at),
+          };
+        });
+
+        setPosts(transformedPosts);
+        console.log('Real voice clips fetched:', transformedPosts.length);
+      } else {
+        console.log('No voice clips found in database');
+        setPosts([]);
+      }
+    } catch (error) {
+      console.error('Error in fetchRealContent:', error);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    fetchRealContent();
+  }, [fetchRealContent]);
+
+  // Refresh when screen comes into focus (user returns from recording)
+  useFocusEffect(
+    useCallback(() => {
+      fetchRealContent(true);
+    }, [fetchRealContent])
+  );
 
   // Cleanup audio when component unmounts
   useEffect(() => {
@@ -1059,17 +1076,20 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               {post.user.isVerified && (
                 <Ionicons name="checkmark-circle" size={16} color="#10B981" />
               )}
-              <TouchableOpacity
-                style={!post.user.isFollowing ? styles.followButton : [styles.followButton, styles.followingButton]}
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent navigation when clicking follow button
-                  handleFollow(post.user.id);
-                }}
-              >
-                <Text style={!post.user.isFollowing ? styles.followButtonText : [styles.followButtonText, styles.followingButtonText]}>
-                  {post.user.isFollowing ? 'Following' : 'Follow'}
-                </Text>
-              </TouchableOpacity>
+              {/* Only show follow button if this is not the authenticated user's own post */}
+              {user && post.user.id !== user.id && (
+                <TouchableOpacity
+                  style={!post.user.isFollowing ? styles.followButton : [styles.followButton, styles.followingButton]}
+                  onPress={(e) => {
+                    e.stopPropagation(); // Prevent navigation when clicking follow button
+                    handleFollow(post.user.id);
+                  }}
+                >
+                  <Text style={!post.user.isFollowing ? styles.followButtonText : [styles.followButtonText, styles.followingButtonText]}>
+                    {post.user.isFollowing ? 'Following' : 'Follow'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
             <View style={styles.postMeta}>
               <View style={styles.languageTag}>
@@ -1339,6 +1359,14 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchRealContent(true)}
+            colors={['#FF8A00']}
+            tintColor="#FF8A00"
+          />
+        }
       >
         {activeTab === 'Live' ? (
           <View style={styles.liveSection}>
