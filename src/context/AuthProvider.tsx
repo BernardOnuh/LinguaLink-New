@@ -21,6 +21,7 @@ type AuthContextValue = {
     }
   ) => Promise<null | string>;
   resetPassword: (email: string) => Promise<null | string>;
+  updatePassword: (newPassword: string) => Promise<null | string>;
   signOut: () => Promise<void>;
 };
 
@@ -42,6 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Auth state changed:', event, newSession?.user?.email);
       console.log('Session:', newSession);
       setSession(newSession);
+      setLoading(false);
 
       // Handle OAuth sign-in success
       if (event === 'SIGNED_IN' && newSession?.user) {
@@ -290,13 +292,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updatePassword = async (newPassword: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) {
+        return error.message;
+      }
+
+      return null; // Success
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
+    }
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, resetPassword, signOut }),
+    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, resetPassword, updatePassword, signOut }),
     [session, user, loading]
   );
 
