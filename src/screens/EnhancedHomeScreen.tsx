@@ -128,7 +128,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuth();
 
-  // Fetch real voice clips and users from database
+  // Fetch real voice and video clips with user information from database
   const fetchRealContent = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -159,9 +159,28 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         return;
       }
 
-      if (voiceClips && voiceClips.length > 0) {
-        // Transform voice clips to posts
-        const transformedPosts: Post[] = voiceClips.map((clip, index) => {
+      // Fetch video clips with user information
+      const { data: videoClips, error: videosError } = await supabase
+        .from('video_clips')
+        .select(`
+          *,
+          profiles!video_clips_user_id_fkey (
+            id,
+            full_name,
+            username,
+            primary_language,
+            avatar_url,
+            bio
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (videosError) {
+        console.error('Error fetching video clips:', videosError);
+      }
+
+      const voicePosts: Post[] = (voiceClips || []).map((clip) => {
           const user = clip.profiles;
           return {
             id: clip.id,
@@ -200,15 +219,56 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               needsValidation: !clip.is_validated,
             },
             timeAgo: getTimeAgo(clip.created_at),
-          };
+            createdAt: clip.created_at as any,
+          } as any;
         });
 
-        setPosts(transformedPosts);
-        console.log('Real voice clips fetched:', transformedPosts.length);
-      } else {
-        console.log('No voice clips found in database');
-        setPosts([]);
-      }
+      const videoPosts: Post[] = (videoClips || []).map((clip) => {
+        const user = clip.profiles;
+        return {
+          id: clip.id,
+          type: 'video' as const,
+          user: {
+            id: user?.id || 'unknown',
+            name: user?.full_name || 'Anonymous',
+            username: user?.username || 'user',
+            avatar: '👤',
+            avatarUrl: user?.avatar_url || undefined,
+            language: user?.primary_language || 'English',
+            isFollowing: false,
+            followers: Math.floor(Math.random() * 1000) + 10,
+            isVerified: Math.random() > 0.7,
+          },
+          content: {
+            phrase: clip.phrase || 'Video clip',
+            translation: clip.translation || '',
+            videoThumbnail: '🎬',
+            duration: clip.duration ? `${Math.floor(clip.duration / 60)}:${(clip.duration % 60).toString().padStart(2, '0')}` : '0:00',
+          },
+          engagement: {
+            likes: clip.likes_count || 0,
+            comments: clip.comments_count || 0,
+            shares: clip.shares_count || 0,
+            validations: clip.validations_count || 0,
+            reposts: 0,
+            duets: clip.duets_count || 0,
+            remixes: clip.remixes_count || 0,
+          },
+          actions: {
+            isLiked: false,
+            isValidated: clip.is_validated || false,
+            isReposted: false,
+            needsValidation: !clip.is_validated,
+          },
+          timeAgo: getTimeAgo(clip.created_at),
+          createdAt: clip.created_at as any,
+        } as any;
+      });
+
+      const combined: any[] = [...voicePosts, ...videoPosts];
+      combined.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setPosts(combined as Post[]);
+      console.log('Fetched posts:', combined.length, `(voice ${voicePosts.length}, video ${videoPosts.length})`);
     } catch (error) {
       console.error('Error in fetchRealContent:', error);
     } finally {
@@ -1232,7 +1292,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         </TouchableOpacity>
 
 
-        {post.type === 'voice' && (
+        {(post.type === 'voice' || post.type === 'video') && (
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => {
@@ -1256,7 +1316,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             <Text style={styles.actionText}>Duet</Text>
           </TouchableOpacity>
         )}
-        {post.type === 'voice' && (
+        {(post.type === 'voice' || post.type === 'video') && (
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => {
@@ -1276,8 +1336,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             <Text style={styles.actionText}>Remix</Text>
           </TouchableOpacity>
         )}
-
-        {post.type === 'voice' && (
+        {(post.type === 'voice' || post.type === 'video') && (
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() =>
