@@ -17,6 +17,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -35,6 +36,7 @@ interface Props {
   navigation: RecordVoiceScreenNavigationProp;
   route?: {
     params?: {
+      mode?: 'record' | 'upload';
       isRemix?: boolean;
       isDuet?: boolean;
       originalClip?: {
@@ -92,6 +94,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const isRemix = route?.params?.isRemix || false;
   const isDuet = route?.params?.isDuet || false;
   const originalClip = route?.params?.originalClip;
+  const mode = route?.params?.mode || 'record';
 
   // Request audio recording permissions
   useEffect(() => {
@@ -99,6 +102,13 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       const { status } = await Audio.requestPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
+  }, []);
+
+  // Default to editing prompt for regular record/upload so users can type theirs
+  useEffect(() => {
+    if (!isRemix && !isDuet) {
+      setIsEditingPrompt(true);
+    }
   }, []);
 
   // Set up audio mode for recording
@@ -161,6 +171,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   }, [isRecording, pulseAnimation]);
 
   const handleRecord = async () => {
+    if (mode === 'upload') return; // recording disabled in upload mode
     if (!selectedLanguage) {
       Alert.alert('Select Language', 'Please select the language you\'ll be speaking in before recording.');
       setShowLanguageModal(true);
@@ -226,9 +237,40 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  const handleChooseAudio = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['audio/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) return;
+      const file = result.assets?.[0];
+      if (!file?.uri) return;
+
+      setAudioUri(file.uri);
+      setHasRecorded(true);
+      setRecordingTime(0);
+      if (!customPrompt.trim()) {
+        setPhrase('');
+      }
+      Alert.alert('Audio Selected', 'Your audio file is ready to upload.');
+    } catch (e) {
+      console.error('Document picker error:', e);
+      Alert.alert('Error', 'Failed to pick audio file');
+    }
+  };
+
   const handleSave = async () => {
     if (!authUser?.id || !selectedLanguage || !audioUri) {
       Alert.alert('Error', 'Missing required information to save recording.');
+      return;
+    }
+
+    const finalPhrase = (customPrompt || phrase).trim();
+    if (!finalPhrase) {
+      Alert.alert('Add a prompt', 'Please write a short phrase describing your audio.');
       return;
     }
 
@@ -253,7 +295,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         .from('voice_clips')
         .insert({
           user_id: authUser.id,
-          phrase: phrase || getPromptText(),
+          phrase: finalPhrase,
           translation: translation || 'Translation will be added later',
           audio_url: uploadResult.url, // Use the cloud URL
           language: selectedLanguage.name,
@@ -375,22 +417,18 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const getScreenTitle = () => {
     if (isRemix) return 'Create Remix';
     if (isDuet) return 'Record Duet';
-    return 'Record Voice';
+    return mode === 'upload' ? 'Upload Audio' : 'Record Voice';
   };
 
   const getPromptText = () => {
-    // If user has a custom prompt (whether editing or not), use that
-    if (customPrompt.trim()) {
-      return customPrompt.trim();
-    }
-
+    if (customPrompt.trim()) return customPrompt.trim();
     if (isRemix && originalClip) {
       return `Create your own version of "${originalClip.phrase}" or say it in your dialect`;
     }
     if (isDuet && originalClip) {
       return `Respond to "${originalClip.phrase}"`;
     }
-    return "Say 'Welcome to our home' in your language";
+    return '';
   };
 
   const LanguageModal = () => (
@@ -507,7 +545,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={styles.promptCard}>
           <View style={styles.promptHeader}>
             <Text style={styles.promptTitle}>
-              {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Today\'s Prompt'}
+              {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Your Prompt'}
             </Text>
             <View style={styles.promptActions}>
               {!isEditingPrompt && customPrompt.trim() && (
@@ -531,7 +569,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
                     const currentPrompt = customPrompt.trim() ||
                       (isRemix && originalClip ? `Create your own version of "${originalClip.phrase}" or say it in your dialect` :
                        isDuet && originalClip ? `Respond to "${originalClip.phrase}"` :
-                       "Say 'Welcome to our home' in your language");
+                       '');
                     setCustomPrompt(currentPrompt);
                     setIsEditingPrompt(true);
                   }
@@ -557,11 +595,13 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
               autoFocus
             />
           ) : (
-            <Text style={styles.promptText}>{getPromptText()}</Text>
+            <Text style={styles.promptText}>
+              {getPromptText() || 'Describe what you are saying...'}
+            </Text>
           )}
 
           <Text style={styles.promptSubtext}>
-            {isRemix || isDuet ? 'Express it in your own way!' : 'Optional - or record anything you\'d like!'}
+            {isRemix || isDuet ? 'Express it in your own way!' : 'Write a short phrase that matches your audio'}
           </Text>
         </View>
 
@@ -591,6 +631,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
             </View>
           )}
 
+          {mode === 'record' ? (
           <View style={styles.recordButtonContainer}>
             <Animated.View
               style={[
@@ -617,6 +658,17 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
               </TouchableOpacity>
             </Animated.View>
           </View>
+          ) : (
+          <View style={styles.recordButtonContainer}>
+            <TouchableOpacity
+              style={[styles.recordButton, (!selectedLanguage) && styles.disabledButton]}
+              onPress={handleChooseAudio}
+              disabled={!selectedLanguage}
+            >
+              <Ionicons name="cloud-upload" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          )}
 
           <View style={styles.statusContainer}>
             {!hasPermission && (
