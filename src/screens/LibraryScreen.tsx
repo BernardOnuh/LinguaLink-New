@@ -21,7 +21,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
-import { getPlayableAudioUrl } from '../utils/storage';
+import { getPlayableAudioUrl, getPlayableVideoUrl } from '../utils/storage';
 import { useFocusEffect } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
@@ -52,6 +52,18 @@ interface VoiceClip {
   is_validated: boolean;
 }
 
+interface VideoClip {
+  id: string;
+  phrase: string;
+  translation?: string;
+  video_url?: string;
+  thumbnail_url?: string | null;
+  duration?: number | null;
+  created_at: string;
+  likes_count: number;
+  comments_count: number;
+}
+
 type LibraryScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Library'>,
   NativeStackNavigationProp<RootStackParamList>
@@ -62,8 +74,9 @@ interface Props {
 }
 
 const LibraryScreen: React.FC<Props> = ({ navigation }) => {
-  const [activeTab, setActiveTab] = useState<'Voice Clips' | 'AI Stories'>('Voice Clips');
+  const [activeTab, setActiveTab] = useState<'Voice Clips' | 'Video Clips' | 'AI Stories'>('Voice Clips');
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>([]);
+  const [videoClips, setVideoClips] = useState<VideoClip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
@@ -91,6 +104,17 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
       }
 
       setVoiceClips(clips || []);
+
+      // Fetch user's video clips
+      const { data: vids, error: vidsErr } = await supabase
+        .from('video_clips')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (vidsErr) {
+        console.error('Error fetching video clips:', vidsErr);
+      }
+      setVideoClips(vids || []);
     } catch (error) {
       console.error('Error in fetchVoiceClips:', error);
     } finally {
@@ -177,6 +201,20 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Error', 'Failed to play audio file');
     }
   };
+
+  const renderVideoClip = (clip: VideoClip) => (
+    <View key={clip.id} style={styles.videoCard}>
+      <View style={styles.videoThumb}>
+        <Text style={styles.videoThumbText}>🎬</Text>
+        <View style={styles.videoDurationBadge}>
+          <Text style={styles.videoDurationBadgeText}>
+            {clip.duration ? `${Math.floor((clip.duration || 0) / 60)}:${(((clip.duration || 0) % 60) + '').padStart(2, '0')}` : '0:00'}
+          </Text>
+        </View>
+      </View>
+      <Text numberOfLines={1} style={styles.videoCaption}>{clip.phrase || 'Video'}</Text>
+    </View>
+  );
 
   const confirmDeleteClip = (clip: VoiceClip) => {
     Alert.alert(
@@ -320,6 +358,21 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
           <TouchableOpacity
             style={[
               styles.tabButton,
+              activeTab === 'Video Clips' && styles.activeTabButton
+            ]}
+            onPress={() => setActiveTab('Video Clips')}
+          >
+            <Text style={[
+              styles.tabButtonText,
+              activeTab === 'Video Clips' && styles.activeTabButtonText
+            ]}>
+              Video Clips ({videoClips.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
               activeTab === 'AI Stories' && styles.activeTabButton
             ]}
             onPress={() => setActiveTab('AI Stories')}
@@ -366,6 +419,34 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
             ) : (
               <View style={styles.clipsContainer}>
                 {voiceClips.map(renderVoiceClip)}
+              </View>
+            )}
+          </View>
+        )}
+
+        {activeTab === 'Video Clips' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your Video Clips</Text>
+            <Text style={styles.sectionDescription}>
+              Videos you've uploaded or recorded
+            </Text>
+
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#FF8A00" />
+                <Text style={styles.loadingText}>Loading your videos...</Text>
+              </View>
+            ) : videoClips.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="videocam-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyStateTitle}>No videos yet</Text>
+                <Text style={styles.emptyStateDescription}>
+                  Record or upload a video from the Create tab
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.videoGrid}>
+                {videoClips.map(renderVideoClip)}
               </View>
             )}
           </View>
@@ -525,6 +606,44 @@ const styles = StyleSheet.create({
   },
   clipsContainer: {
     marginTop: 20,
+  },
+  videoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  videoCard: {
+    width: (width * 0.9 - 12) / 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  videoThumb: {
+    height: 100,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoThumbText: { fontSize: 36 },
+  videoDurationBadge: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  videoDurationBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' },
+  videoCaption: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
   },
   clipCard: {
     backgroundColor: '#FFFFFF',
