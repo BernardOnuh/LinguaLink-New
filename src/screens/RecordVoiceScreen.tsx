@@ -13,6 +13,8 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  ScrollView,
+  TextInput,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,6 +78,8 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [phrase, setPhrase] = useState('');
   const [translation, setTranslation] = useState('');
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState('');
 
   // Audio recording state
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -375,11 +379,16 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const getPromptText = () => {
+    // If user has a custom prompt (whether editing or not), use that
+    if (customPrompt.trim()) {
+      return customPrompt.trim();
+    }
+
     if (isRemix && originalClip) {
       return `Create your own version of "${originalClip.phrase}" or say it in your dialect`;
     }
     if (isDuet && originalClip) {
-      return `Respond to "${originalClip.phrase}" by ${originalClip.user}`;
+      return `Respond to "${originalClip.phrase}"`;
     }
     return "Say 'Welcome to our home' in your language";
   };
@@ -442,187 +451,244 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* User Info */}
-      {authUser && (
-        <View style={styles.userInfoContainer}>
-          <Text style={styles.userInfoText}>
-            Recording as: {authUser.email}
-          </Text>
-        </View>
-      )}
-
-      {/* Original Clip Reference (for Remix/Duet) */}
-      {(isRemix || isDuet) && originalClip && (
-        <View style={styles.originalClipCard}>
-          <View style={styles.originalClipHeader}>
-            <Ionicons
-              name={isRemix ? "repeat" : "people"}
-              size={16}
-              color={isRemix ? "#8B5CF6" : "#10B981"}
-            />
-            <Text style={styles.originalClipType}>
-              {isRemix ? 'Remixing' : 'Responding to'}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* User Info */}
+        {authUser && (
+          <View style={styles.userInfoContainer}>
+            <Text style={styles.userInfoText}>
+              Recording as: {authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email}
             </Text>
           </View>
-          <Text style={styles.originalClipPhrase}>"{originalClip.phrase}"</Text>
-          <Text style={styles.originalClipMeta}>
-            by {originalClip.user} • {originalClip.language}
-          </Text>
-        </View>
-      )}
-
-      {/* Language Selection */}
-      <TouchableOpacity
-        style={styles.languageSelector}
-        onPress={() => setShowLanguageModal(true)}
-      >
-        <Ionicons name="globe-outline" size={20} color="#FF8A00" />
-        <Text style={[
-          styles.languageSelectorText,
-          selectedLanguage && styles.languageSelected
-        ]}>
-          {selectedLanguage
-            ? `${selectedLanguage.name}${selectedLanguage.dialect ? ` / ${selectedLanguage.dialect}` : ''}`
-            : 'Select your language'
-          }
-        </Text>
-        <Ionicons name="chevron-down" size={20} color="#999" />
-      </TouchableOpacity>
-
-      {/* Prompt Card */}
-      <View style={styles.promptCard}>
-        <Text style={styles.promptTitle}>
-          {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Today\'s Prompt'}
-        </Text>
-        <Text style={styles.promptText}>{getPromptText()}</Text>
-        <Text style={styles.promptSubtext}>
-          {isRemix || isDuet ? 'Express it in your own way!' : 'Optional - or record anything you\'d like!'}
-        </Text>
-      </View>
-
-      {/* Recording Area */}
-      <View style={styles.recordingArea}>
-        {(isRecording || hasRecorded) && (
-          <View style={styles.timerContainer}>
-            <Text style={styles.timerText}>{formatTime(recordingTime)}</Text>
-            <Text style={styles.maxTimeText}>/ 1:00</Text>
-          </View>
         )}
 
-        {isRecording && (
-          <View style={styles.waveformContainer}>
-            {Array.from({ length: 20 }, (_, i) => (
-              <Animated.View
-                key={i}
-                style={[
-                  styles.waveformBar,
-                  {
-                    height: Math.random() * 60 + 20,
-                    transform: [{ scaleY: pulseAnimation }]
-                  }
-                ]}
-              />
-            ))}
-          </View>
-        )}
-
-        <View style={styles.recordButtonContainer}>
-          <Animated.View
-            style={[
-              styles.recordButtonOuter,
-              isRecording && {
-                transform: [{ scale: pulseAnimation }]
-              }
-            ]}
-          >
-            <TouchableOpacity
-              style={[
-                styles.recordButton,
-                isRecording && styles.recordingButton,
-                (!selectedLanguage || !hasPermission) && styles.disabledButton
-              ]}
-              onPress={handleRecord}
-              disabled={!hasPermission}
-            >
+        {/* Original Clip Reference (for Remix/Duet) */}
+        {(isRemix || isDuet) && originalClip && (
+          <View style={styles.originalClipCard}>
+            <View style={styles.originalClipHeader}>
               <Ionicons
-                name={isRecording ? "stop" : "mic"}
-                size={32}
-                color="#FFFFFF"
+                name={isRemix ? "repeat" : "people"}
+                size={16}
+                color={isRemix ? "#8B5CF6" : "#10B981"}
               />
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
+              <Text style={styles.originalClipType}>
+                {isRemix ? 'Remixing' : 'Responding to'}
+              </Text>
+            </View>
+            <Text style={styles.originalClipPhrase}>"{originalClip.phrase}"</Text>
+            <Text style={styles.originalClipMeta}>
+              {originalClip.language}
+            </Text>
+          </View>
+        )}
 
-        <View style={styles.statusContainer}>
-          {!hasPermission && (
-            <Text style={styles.statusText}>Microphone permission required</Text>
-          )}
-          {!selectedLanguage && hasPermission && (
-            <Text style={styles.statusText}>Select a language to start recording</Text>
-          )}
-          {selectedLanguage && !isRecording && !hasRecorded && hasPermission && (
-            <Text style={styles.statusText}>Tap to start recording in {selectedLanguage.name}</Text>
-          )}
-          {isRecording && (
-            <Text style={styles.statusText}>Recording in {selectedLanguage?.name}...</Text>
-          )}
-          {!isRecording && hasRecorded && (
-            <Text style={styles.statusText}>Recording complete! Ready to save.</Text>
-          )}
-          <Text style={styles.maxTimeSubtext}>Max 60 seconds</Text>
-        </View>
-      </View>
-
-      {hasRecorded && (
-        <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.discardButton} onPress={handleDiscard}>
-            <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            <Text style={styles.discardButtonText}>Discard</Text>
-          </TouchableOpacity>
-
-                     <TouchableOpacity
-             style={[styles.saveButton, isSaving && styles.disabledButton]}
-             onPress={handleSave}
-             disabled={isSaving}
-           >
-             {isSaving ? (
-               <ActivityIndicator size="small" color="#FFFFFF" />
-             ) : (
-               <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-             )}
-             <Text style={styles.saveButtonText}>
-               {isSaving ? (uploadProgress || 'Saving...') : `Save ${isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}`}
-             </Text>
-           </TouchableOpacity>
-        </View>
-      )}
-
-      {!isRecording && !hasRecorded && selectedLanguage && (
-        <View style={styles.tipsContainer}>
-          <Text style={styles.tipsTitle}>
-            {isRemix ? 'Remix Tips:' : isDuet ? 'Duet Tips:' : 'Recording Tips:'}
+        {/* Language Selection */}
+        <TouchableOpacity
+          style={styles.languageSelector}
+          onPress={() => setShowLanguageModal(true)}
+        >
+          <Ionicons name="globe-outline" size={20} color="#FF8A00" />
+          <Text style={[
+            styles.languageSelectorText,
+            selectedLanguage && styles.languageSelected
+          ]}>
+            {selectedLanguage
+              ? `${selectedLanguage.name}${selectedLanguage.dialect ? ` / ${selectedLanguage.dialect}` : ''}`
+              : 'Select your language'
+            }
           </Text>
-          {isRemix ? (
-            <>
-              <Text style={styles.tipText}>• Put your own spin on the phrase</Text>
-              <Text style={styles.tipText}>• Use your regional dialect</Text>
-              <Text style={styles.tipText}>• Add cultural context or meaning</Text>
-            </>
-          ) : isDuet ? (
-            <>
-              <Text style={styles.tipText}>• Respond naturally to the original</Text>
-              <Text style={styles.tipText}>• Share your perspective or translation</Text>
-              <Text style={styles.tipText}>• Build on the conversation</Text>
-            </>
+          <Ionicons name="chevron-down" size={20} color="#999" />
+        </TouchableOpacity>
+
+        {/* Prompt Card */}
+        <View style={styles.promptCard}>
+          <View style={styles.promptHeader}>
+            <Text style={styles.promptTitle}>
+              {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Today\'s Prompt'}
+            </Text>
+            <View style={styles.promptActions}>
+              {!isEditingPrompt && customPrompt.trim() && (
+                <TouchableOpacity
+                  style={styles.resetPromptButton}
+                  onPress={() => {
+                    setCustomPrompt('');
+                  }}
+                >
+                  <Ionicons name="refresh-outline" size={16} color="#6B7280" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.editPromptButton}
+                onPress={() => {
+                  if (isEditingPrompt) {
+                    // Save the custom prompt
+                    setIsEditingPrompt(false);
+                  } else {
+                    // Start editing - initialize with current prompt
+                    const currentPrompt = customPrompt.trim() ||
+                      (isRemix && originalClip ? `Create your own version of "${originalClip.phrase}" or say it in your dialect` :
+                       isDuet && originalClip ? `Respond to "${originalClip.phrase}"` :
+                       "Say 'Welcome to our home' in your language");
+                    setCustomPrompt(currentPrompt);
+                    setIsEditingPrompt(true);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={isEditingPrompt ? "checkmark" : "create-outline"}
+                  size={16}
+                  color="#D97706"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {isEditingPrompt ? (
+            <TextInput
+              style={styles.promptInput}
+              value={customPrompt}
+              onChangeText={setCustomPrompt}
+              placeholder="Enter your custom prompt..."
+              multiline
+              textAlignVertical="top"
+              autoFocus
+            />
           ) : (
-            <>
-              <Text style={styles.tipText}>• Speak clearly and naturally</Text>
-              <Text style={styles.tipText}>• Hold phone close to your mouth</Text>
-              <Text style={styles.tipText}>• Record in a quiet environment</Text>
-            </>
+            <Text style={styles.promptText}>{getPromptText()}</Text>
           )}
+
+          <Text style={styles.promptSubtext}>
+            {isRemix || isDuet ? 'Express it in your own way!' : 'Optional - or record anything you\'d like!'}
+          </Text>
         </View>
-      )}
+
+        {/* Recording Area */}
+        <View style={styles.recordingArea}>
+          {(isRecording || hasRecorded) && (
+            <View style={styles.timerContainer}>
+              <Text style={styles.timerText}>{formatTime(recordingTime)}</Text>
+              <Text style={styles.maxTimeText}>/ 1:00</Text>
+            </View>
+          )}
+
+          {isRecording && (
+            <View style={styles.waveformContainer}>
+              {Array.from({ length: 20 }, (_, i) => (
+                <Animated.View
+                  key={i}
+                  style={[
+                    styles.waveformBar,
+                    {
+                      height: Math.random() * 60 + 20,
+                      transform: [{ scaleY: pulseAnimation }]
+                    }
+                  ]}
+                />
+              ))}
+            </View>
+          )}
+
+          <View style={styles.recordButtonContainer}>
+            <Animated.View
+              style={[
+                styles.recordButtonOuter,
+                isRecording && {
+                  transform: [{ scale: pulseAnimation }]
+                }
+              ]}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.recordButton,
+                  isRecording && styles.recordingButton,
+                  (!selectedLanguage || !hasPermission) && styles.disabledButton
+                ]}
+                onPress={handleRecord}
+                disabled={!hasPermission}
+              >
+                <Ionicons
+                  name={isRecording ? "stop" : "mic"}
+                  size={32}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+
+          <View style={styles.statusContainer}>
+            {!hasPermission && (
+              <Text style={styles.statusText}>Microphone permission required</Text>
+            )}
+            {!selectedLanguage && hasPermission && (
+              <Text style={styles.statusText}>Select a language to start recording</Text>
+            )}
+            {selectedLanguage && !isRecording && !hasRecorded && hasPermission && (
+              <Text style={styles.statusText}>Tap to start recording in {selectedLanguage.name}</Text>
+            )}
+            {isRecording && (
+              <Text style={styles.statusText}>Recording in {selectedLanguage?.name}...</Text>
+            )}
+            {!isRecording && hasRecorded && (
+              <Text style={styles.statusText}>Recording complete! Ready to save.</Text>
+            )}
+            <Text style={styles.maxTimeSubtext}>Max 60 seconds</Text>
+          </View>
+        </View>
+
+        {hasRecorded && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity style={styles.discardButton} onPress={handleDiscard}>
+              <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              <Text style={styles.discardButtonText}>Discard</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.saveButton, isSaving && styles.disabledButton]}
+              onPress={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+              )}
+              <Text style={styles.saveButtonText}>
+                {isSaving ? (uploadProgress || 'Saving...') : `Save ${isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!isRecording && !hasRecorded && selectedLanguage && (
+          <View style={styles.tipsContainer}>
+            <Text style={styles.tipsTitle}>
+              {isRemix ? 'Remix Tips:' : isDuet ? 'Duet Tips:' : 'Recording Tips:'}
+            </Text>
+            {isRemix ? (
+              <>
+                <Text style={styles.tipText}>• Put your own spin on the phrase</Text>
+                <Text style={styles.tipText}>• Use your regional dialect</Text>
+                <Text style={styles.tipText}>• Add cultural context or meaning</Text>
+              </>
+            ) : isDuet ? (
+              <>
+                <Text style={styles.tipText}>• Respond naturally to the original</Text>
+                <Text style={styles.tipText}>• Share your perspective or translation</Text>
+                <Text style={styles.tipText}>• Build on the conversation</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.tipText}>• Speak clearly and naturally</Text>
+                <Text style={styles.tipText}>• Hold phone close to your mouth</Text>
+                <Text style={styles.tipText}>• Record in a quiet environment</Text>
+              </>
+            )}
+          </View>
+        )}
+      </ScrollView>
 
       <LanguageModal />
     </SafeAreaView>
@@ -633,6 +699,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -716,11 +789,42 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 16,
   },
+  promptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   promptTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#D97706',
-    marginBottom: 8,
+    flex: 1,
+  },
+  promptActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editPromptButton: {
+    padding: 4,
+    borderRadius: 4,
+  },
+  resetPromptButton: {
+    padding: 4,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  promptInput: {
+    fontSize: 16,
+    color: '#92400E',
+    marginBottom: 4,
+    lineHeight: 22,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    minHeight: 60,
   },
   promptText: {
     fontSize: 16,
@@ -733,10 +837,11 @@ const styles = StyleSheet.create({
     color: '#A16207',
   },
   recordingArea: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: width * 0.05,
+    paddingVertical: 40,
+    minHeight: 400,
   },
   timerContainer: {
     flexDirection: 'row',
