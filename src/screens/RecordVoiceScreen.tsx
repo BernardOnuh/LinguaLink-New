@@ -24,6 +24,7 @@ import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
 import { uploadAudioFile } from '../utils/storage';
+import { generateDailyPrompts, markPromptAsUsed, DailyPrompt } from '../utils/dailyPrompts';
 
 const { width, height } = Dimensions.get('window');
 
@@ -83,6 +84,12 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
 
+  // Daily prompts state
+  const [dailyPrompts, setDailyPrompts] = useState<DailyPrompt[]>([]);
+  const [selectedPrompt, setSelectedPrompt] = useState<DailyPrompt | null>(null);
+  const [showPromptSelector, setShowPromptSelector] = useState(false);
+  const [isLoadingPrompts, setIsLoadingPrompts] = useState(false);
+
   // Audio recording state
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<Audio.RecordingStatus | null>(null);
@@ -102,6 +109,11 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       const { status } = await Audio.requestPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
+  }, []);
+
+  // Load daily prompts on component mount
+  useEffect(() => {
+    loadDailyPrompts();
   }, []);
 
   // Default to editing prompt for regular record/upload so users can type theirs
@@ -305,6 +317,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           comments_count: 0,
           validations_count: 0,
           is_validated: false,
+          daily_prompt_id: selectedPrompt ? selectedPrompt.id : null,
           // Duet/Remix tracking
           original_clip_id: isDuet || isRemix ? originalClip?.id : null,
           clip_type: isDuet ? 'duet' : isRemix ? 'remix' : 'original'
@@ -316,6 +329,13 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
       console.log('Voice clip saved successfully:', data);
       console.log('Audio file available at:', uploadResult.url);
+
+      // If a daily prompt was selected, mark it as used upon successful save
+      if (selectedPrompt) {
+        await markPromptAsUsed(selectedPrompt.id);
+        setDailyPrompts(prev => prev.map(p => p.id === selectedPrompt.id ? { ...p, is_used: true, used_at: new Date().toISOString() } : p));
+        setSelectedPrompt(null);
+      }
 
       // If this is a duet, update the original clip's duet count
       if (isDuet && originalClip?.id) {
@@ -422,6 +442,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const getPromptText = () => {
     if (customPrompt.trim()) return customPrompt.trim();
+    if (selectedPrompt) return selectedPrompt.prompt_text;
     if (isRemix && originalClip) {
       return `Create your own version of "${originalClip.phrase}" or say it in your dialect`;
     }
@@ -429,6 +450,36 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       return `Respond to "${originalClip.phrase}"`;
     }
     return '';
+  };
+
+  // Load daily prompts for the user
+  const loadDailyPrompts = async () => {
+    if (!authUser) return;
+
+    try {
+      setIsLoadingPrompts(true);
+      const prompts = await generateDailyPrompts(authUser.id, selectedLanguage?.name);
+      setDailyPrompts(prompts);
+    } catch (error) {
+      console.error('Error loading daily prompts:', error);
+    } finally {
+      setIsLoadingPrompts(false);
+    }
+  };
+
+  // Handle prompt selection (do NOT mark as used yet; only after successful save)
+  const handlePromptSelect = async (prompt: DailyPrompt) => {
+    setSelectedPrompt(prompt);
+    setCustomPrompt(prompt.prompt_text);
+    setShowPromptSelector(false);
+  };
+
+  // Handle custom prompt
+  const handleCustomPrompt = () => {
+    setSelectedPrompt(null);
+    setCustomPrompt('');
+    setShowPromptSelector(false);
+    setIsEditingPrompt(true);
   };
 
   const LanguageModal = () => (
@@ -541,7 +592,55 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           <Ionicons name="chevron-down" size={20} color="#999" />
         </TouchableOpacity>
 
-        {/* Prompt Card */}
+        {/* Daily Prompts Section - Only show for regular record/upload */}
+        {!isRemix && !isDuet && (
+          <View style={styles.dailyPromptsSection}>
+            <Text style={styles.dailyPromptsTitle}>Today's Daily Prompts</Text>
+            <Text style={styles.dailyPromptsSubtitle}>
+              You’ll see one prompt at a time (3 per day)
+            </Text>
+
+            {isLoadingPrompts ? (
+              <View style={styles.loadingPrompts}>
+                <ActivityIndicator size="small" color="#FF8A00" />
+                <Text style={styles.loadingText}>Loading your daily prompts...</Text>
+              </View>
+            ) : (
+              <View style={styles.promptsContainer}>
+                {/* Show only the first unused prompt (or none if all used) */}
+                {(() => {
+                  const nextPrompt = dailyPrompts.find(p => !p.is_used);
+                  return nextPrompt ? (
+                    <TouchableOpacity
+                      key={nextPrompt.id}
+                      style={[
+                        styles.promptOption,
+                        selectedPrompt?.id === nextPrompt.id && styles.selectedPromptOption
+                      ]}
+                      onPress={() => handlePromptSelect(nextPrompt)}
+                    >
+                      <View style={styles.promptOptionContent}>
+                        <Text style={[
+                          styles.promptOptionText,
+                          selectedPrompt?.id === nextPrompt.id && styles.selectedPromptText
+                        ]}>
+                          {nextPrompt.prompt_text}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.dailyPromptsSubtitle}>You have used all 3 daily prompts.</Text>
+                  );
+                })()}
+
+                {/* Custom prompt button removed per request */}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Prompt Card - only after all daily prompts are used, or for remix/duet */}
+        {(isRemix || isDuet || (dailyPrompts.length > 0 && dailyPrompts.every(p => p.is_used))) && (
         <View style={styles.promptCard}>
           <View style={styles.promptHeader}>
             <Text style={styles.promptTitle}>
@@ -604,6 +703,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
             {isRemix || isDuet ? 'Express it in your own way!' : 'Write a short phrase that matches your audio'}
           </Text>
         </View>
+        )}
 
         {/* Recording Area */}
         <View style={styles.recordingArea}>
@@ -713,6 +813,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
             </TouchableOpacity>
           </View>
         )}
+
 
         {!isRecording && !hasRecorded && selectedLanguage && (
           <View style={styles.tipsContainer}>
@@ -1064,6 +1165,96 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginTop: 2,
+  },
+  // Daily Prompts Styles
+  dailyPromptsSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dailyPromptsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  dailyPromptsSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 16,
+  },
+  loadingPrompts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 8,
+  },
+  promptsContainer: {
+    gap: 8,
+  },
+  promptOption: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  selectedPromptOption: {
+    backgroundColor: '#FEF3E2',
+    borderColor: '#FF8A00',
+    borderWidth: 2,
+  },
+  usedPromptOption: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#10B981',
+    opacity: 0.7,
+  },
+  promptOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  promptOptionText: {
+    fontSize: 14,
+    color: '#374151',
+    flex: 1,
+    lineHeight: 20,
+  },
+  selectedPromptText: {
+    color: '#D97706',
+    fontWeight: '500',
+  },
+  usedPromptText: {
+    color: '#059669',
+  },
+  customPromptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FF8A00',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  customPromptButtonText: {
+    fontSize: 14,
+    color: '#FF8A00',
+    fontWeight: '500',
+    marginLeft: 8,
   },
 });
 
