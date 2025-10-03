@@ -73,6 +73,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   // Avatar editing state
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+  // Follow counts state
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+
   // Helper function to format time ago
   const getTimeAgo = (dateString: string): string => {
     const now = new Date();
@@ -195,6 +199,34 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Fetch follower/following counts
+  const fetchFollowCounts = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      // Get follower count (people following this user)
+      const { count: followerCount, error: followerError } = await supabase
+        .from('followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', authUser.id);
+
+      if (followerError) throw followerError;
+      setFollowerCount(followerCount || 0);
+
+      // Get following count (people this user is following)
+      const { count: followingCount, error: followingError } = await supabase
+        .from('followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', authUser.id);
+
+      if (followingError) throw followingError;
+      setFollowingCount(followingCount || 0);
+
+    } catch (error) {
+      console.error('Error fetching follow counts:', error);
+    }
+  };
+
 
   // Load all profile data
   const loadProfileData = async () => {
@@ -204,7 +236,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     try {
       await Promise.all([
         fetchUserProfile(),
-        fetchVoiceClips()
+        fetchVoiceClips(),
+        fetchFollowCounts()
       ]);
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -501,6 +534,18 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
           <View style={styles.languageTag}>
             <Text style={styles.languageText}>{userProfile?.primary_language || 'Unknown Language'}</Text>
+          </View>
+
+          {/* Follower/Following counts */}
+          <View style={styles.followStats}>
+            <View style={styles.followStatItem}>
+              <Text style={styles.followStatNumber}>{followerCount}</Text>
+              <Text style={styles.followStatLabel}>Followers</Text>
+            </View>
+            <View style={styles.followStatItem}>
+              <Text style={styles.followStatNumber}>{followingCount}</Text>
+              <Text style={styles.followStatLabel}>Following</Text>
+            </View>
           </View>
         </View>
 
@@ -946,6 +991,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     fontStyle: 'italic',
+  },
+  followStats: {
+    flexDirection: 'row',
+    marginTop: 16,
+    gap: 32,
+  },
+  followStatItem: {
+    alignItems: 'center',
+  },
+  followStatNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  followStatLabel: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
   },
 });
 
