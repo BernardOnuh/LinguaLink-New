@@ -22,6 +22,7 @@ import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
 import { uploadVideoFile } from '../utils/storage';
+import LanguagePicker from '../components/LanguagePicker';
 
 const { width, height } = Dimensions.get('window');
 
@@ -40,22 +41,10 @@ interface Language {
   dialect?: string;
 }
 
-const languages: Language[] = [
-  { id: 'yoruba-ekiti', name: 'Yoruba', dialect: 'Ekiti Dialect' },
-  { id: 'yoruba-lagos', name: 'Yoruba', dialect: 'Lagos Dialect' },
-  { id: 'igbo-nsukka', name: 'Igbo', dialect: 'Nsukka' },
-  { id: 'igbo-owerri', name: 'Igbo', dialect: 'Owerri' },
-  { id: 'hausa-kano', name: 'Hausa', dialect: 'Kano' },
-  { id: 'hausa-sokoto', name: 'Hausa', dialect: 'Sokoto' },
-  { id: 'fulfulde', name: 'Fulfulde' },
-  { id: 'kanuri', name: 'Kanuri' },
-  { id: 'tiv', name: 'Tiv' },
-  { id: 'edo', name: 'Edo' },
-];
 
 const RecordVideoScreen: React.FC<Props> = ({ navigation }) => {
   const { user } = useAuth();
-  const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>(undefined);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -141,34 +130,6 @@ const RecordVideoScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const LanguageModal = () => (
-    <Modal visible={showLanguageModal} animationType="slide" onRequestClose={() => setShowLanguageModal(false)}>
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={() => setShowLanguageModal(false)}>
-            <Ionicons name="close" size={24} color="#666" />
-          </TouchableOpacity>
-          <Text style={styles.modalTitle}>Select your language</Text>
-          <View style={{ width: 24 }} />
-        </View>
-        <View style={styles.languageList}>
-          {languages.map((language) => (
-            <TouchableOpacity
-              key={language.id}
-              style={[styles.languageItem, selectedLanguage?.id === language.id && styles.selectedLanguageItem]}
-              onPress={() => { setSelectedLanguage(language); setShowLanguageModal(false); }}
-            >
-              <View style={styles.languageInfo}>
-                <Text style={styles.languageName}>{language.name}</Text>
-                {language.dialect && <Text style={styles.dialectText}>/ {language.dialect}</Text>}
-              </View>
-              {selectedLanguage?.id === language.id && <Ionicons name="checkmark" size={20} color="#FF8A00" />}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </SafeAreaView>
-    </Modal>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -247,7 +208,12 @@ const RecordVideoScreen: React.FC<Props> = ({ navigation }) => {
         )}
       </ScrollView>
 
-      <LanguageModal />
+      <LanguagePicker
+        visible={showLanguageModal}
+        onClose={() => setShowLanguageModal(false)}
+        onSelect={(language) => setSelectedLanguage(language)}
+        selectedLanguage={selectedLanguage}
+      />
     </SafeAreaView>
   );
 };
