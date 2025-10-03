@@ -23,6 +23,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
+import LanguagePicker from '../components/LanguagePicker';
 
 const { width, height } = Dimensions.get('window');
 
@@ -59,6 +60,12 @@ interface UserProfile {
   created_at: string;
 }
 
+interface Language {
+  id: string;
+  name: string;
+  dialect?: string;
+}
+
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const { user: authUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'My Clips' | 'Badges' | 'Rewards'>('My Clips');
@@ -76,6 +83,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   // Follow counts state
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+
+  // Language picker state
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>(undefined);
 
   // Helper function to format time ago
   const getTimeAgo = (dateString: string): string => {
@@ -224,6 +235,36 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     } catch (error) {
       console.error('Error fetching follow counts:', error);
+    }
+  };
+
+  // Handle language selection
+  const handleLanguageSelect = async (language: Language) => {
+    if (!authUser?.id) return;
+
+    try {
+      // Update the profile with the new primary language
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          primary_language: language.dialect ? `${language.name} / ${language.dialect}` : language.name,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', authUser.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setUserProfile(prev => prev ? {
+        ...prev,
+        primary_language: language.dialect ? `${language.name} / ${language.dialect}` : language.name
+      } : null);
+
+      setShowLanguagePicker(false);
+      Alert.alert('Success', 'Primary language updated successfully!');
+    } catch (error) {
+      console.error('Error updating primary language:', error);
+      Alert.alert('Error', 'Failed to update primary language');
     }
   };
 
@@ -532,9 +573,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           </View>
           <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
-          <View style={styles.languageTag}>
+          <TouchableOpacity
+            style={styles.languageTag}
+            onPress={() => setShowLanguagePicker(true)}
+          >
             <Text style={styles.languageText}>{userProfile?.primary_language || 'Unknown Language'}</Text>
-          </View>
+            <Ionicons name="chevron-down" size={16} color="#FFFFFF" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
 
           {/* Follower/Following counts */}
           <View style={styles.followStats}>
@@ -665,6 +710,14 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
+
+      {/* Language Picker Modal */}
+      <LanguagePicker
+        visible={showLanguagePicker}
+        onClose={() => setShowLanguagePicker(false)}
+        onSelect={handleLanguageSelect}
+        selectedLanguage={selectedLanguage}
+      />
     </SafeAreaView>
   );
 };
@@ -747,6 +800,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   languageText: {
     fontSize: 14,

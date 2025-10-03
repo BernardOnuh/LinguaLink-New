@@ -147,14 +147,14 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       onRequestClose={() => setShowCreateModal(false)}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalBackground}
           onPress={() => setShowCreateModal(false)}
         />
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>Create New</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -168,7 +168,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -182,7 +182,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -204,7 +204,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     // Handle "Add Story" item
     if (item.id === 'add') {
       return (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.addStoryItem}
           onPress={() => navigation.navigate('CreateStory')}
         >
@@ -219,7 +219,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     // Handle regular story items
     const storyItem = item as Story;
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.storyItem, !storyItem.viewed && styles.unviewedStory]}
         onPress={() => navigation.navigate('StoryView', { story: storyItem })}
       >
@@ -259,11 +259,11 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             )}
           </View>
         </View>
-        
+
         <Text style={styles.lastMessage} numberOfLines={1}>
           {contact.lastMessage}
         </Text>
-        
+
         {showTranslations && contact.lastMessageTranslated && (
           <Text style={styles.translatedMessage} numberOfLines={1}>
             📝 {contact.lastMessageTranslated}
@@ -283,13 +283,13 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           </View>
         )}
         <View style={styles.actionButtons}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('VoiceCall', { contact })}
           >
             <Ionicons name="call" size={14} color="#10B981" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('VideoCall', { contact })}
           >
@@ -354,7 +354,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             <Text style={styles.unreadCount}>{group.unreadCount}</Text>
           </View>
         )}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.groupCallButton}
           onPress={() => {
             // Convert group to contact format for video call
@@ -383,7 +383,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
 
   const renderGameItem = () => (
     <View style={styles.gamesContainer}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.gameCard}
         onPress={() => navigation.navigate('TurnVerse')}
       >
@@ -404,7 +404,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         </View>
       </TouchableOpacity>
 
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.gameCard}
         onPress={() => navigation.navigate('WordChain')}
       >
@@ -459,23 +459,23 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>LinguaChat</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.headerButton}
               onPress={() => setShowTranslations(!showTranslations)}
             >
-              <Ionicons 
-                name={showTranslations ? "language" : "language-outline"} 
-                size={24} 
-                color="#FFFFFF" 
+              <Ionicons
+                name={showTranslations ? "language" : "language-outline"}
+                size={24}
+                color="#FFFFFF"
               />
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.headerButton}
               onPress={() => setShowCreateModal(true)}
             >
@@ -496,13 +496,13 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           </View>
           <FlatList
             data={[
-              { 
-                id: 'add', 
-                user: { name: 'Add Story', avatar: '➕' }, 
+              {
+                id: 'add',
+                user: { name: 'Add Story', avatar: '➕' },
                 thumbnail: '➕',
                 timestamp: '',
                 viewed: false
-              }, 
+              },
               ...mockStories
             ]}
             renderItem={renderStoryItem}
@@ -559,7 +559,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       )}
 
       {/* Content List */}
-      <ScrollView 
+      <ScrollView
         style={styles.contentList}
         showsVerticalScrollIndicator={false}
       >
