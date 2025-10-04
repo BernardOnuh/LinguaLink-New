@@ -40,6 +40,7 @@ import GroupCallScreen from './src/screens/GroupCallScreen';
 // Import new feature screens
 import TurnVerseScreen from './src/screens/TurnVerseScreen';
 import LiveStreamingScreen from './src/screens/LiveStreamingScreen';
+import LiveViewerScreen from './src/screens/LiveViewerScreen';
 import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
@@ -146,6 +147,9 @@ export type RootStackParamList = {
   LiveStream: {
     isHost?: boolean;
     roomId?: string;
+  };
+  LiveViewer: {
+    roomId: string;
   };
   CreateGroup: undefined;
   CreateStory: undefined;
@@ -646,6 +650,15 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
         <Stack.Screen
           name="LiveStream"
           component={LiveStreamingScreen}
+          options={{
+            animation: 'slide_from_bottom',
+            presentation: 'fullScreenModal',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="LiveViewer"
+          component={LiveViewerScreen}
           options={{
             animation: 'slide_from_bottom',
             presentation: 'fullScreenModal',
