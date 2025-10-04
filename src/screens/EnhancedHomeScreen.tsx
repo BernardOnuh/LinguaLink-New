@@ -1505,19 +1505,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       </View>
 
       {/* Content */}
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => fetchRealContent(true)}
-            colors={['#FF8A00']}
-            tintColor="#FF8A00"
-          />
-        }
-      >
-        {activeTab === 'Live' ? (
+      {activeTab === 'Live' ? (
+        <View style={styles.content}>
           <View style={styles.liveSection}>
             <View style={styles.liveSectionHeader}>
               <Text style={styles.liveSectionTitle}>Live Now</Text>
@@ -1530,7 +1519,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={styles.liveStreamCard}
-                    onPress={() => navigation.navigate('LiveStream', {
+                    onPress={() => navigation.navigate('LiveViewer', {
                       roomId: item.id
                     })}
                   >
@@ -1563,6 +1552,14 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 )}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.liveStreamsList}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => fetchLiveStreams()}
+                    colors={['#FF8A00']}
+                    tintColor="#FF8A00"
+                  />
+                }
               />
             ) : (
               <View style={styles.noLiveStreams}>
@@ -1579,19 +1576,42 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               </View>
             )}
           </View>
-        ) : isLoading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Loading posts...</Text>
-          </View>
-        ) : posts.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No posts yet</Text>
-            <Text style={styles.emptySubtext}>Create your first post or follow users to see content</Text>
-          </View>
-        ) : (
-          posts.map(renderPost)
-        )}
-      </ScrollView>
+        </View>
+      ) : (
+        <FlatList
+          style={styles.content}
+          data={isLoading ? [] : posts}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => renderPost(item)}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchRealContent(true)}
+              colors={['#FF8A00']}
+              tintColor="#FF8A00"
+            />
+          }
+          ListEmptyComponent={() => {
+            if (isLoading) {
+              return (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.loadingText}>Loading posts...</Text>
+                </View>
+              );
+            }
+            if (posts.length === 0) {
+              return (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No posts yet</Text>
+                  <Text style={styles.emptySubtext}>Create your first post or follow users to see content</Text>
+                </View>
+              );
+            }
+            return null;
+          }}
+        />
+      )}
 
       {/* Floating Create Button */}
       <TouchableOpacity

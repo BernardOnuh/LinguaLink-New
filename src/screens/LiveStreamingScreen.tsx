@@ -316,19 +316,17 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Update live stream in database
+              // Delete live stream from database (auto-cleanup)
               if (streamId) {
                 const { error } = await supabase
                   .from('live_streams')
-                  .update({
-                    is_live: false,
-                    ended_at: new Date().toISOString(),
-                    viewer_count: viewerCount,
-                  })
+                  .delete()
                   .eq('id', streamId);
 
                 if (error) {
-                  console.error('Error ending live stream:', error);
+                  console.error('Error deleting live stream:', error);
+                } else {
+                  console.log('Live stream deleted successfully');
                 }
               }
 
@@ -365,6 +363,26 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
       console.error('Error during cleanup:', error);
     }
   };
+
+  // Auto-cleanup when component unmounts (user navigates away)
+  useEffect(() => {
+    return () => {
+      // If user navigates away while live, delete the stream
+      if (isLive && streamId) {
+        supabase
+          .from('live_streams')
+          .delete()
+          .eq('id', streamId)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Error auto-deleting stream on unmount:', error);
+            } else {
+              console.log('Stream auto-deleted on unmount');
+            }
+          });
+      }
+    };
+  }, [isLive, streamId]);
 
   const sendComment = () => {
     if (newComment.trim()) {
