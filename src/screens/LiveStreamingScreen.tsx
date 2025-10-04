@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
 import io from 'socket.io-client';
+import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
@@ -220,16 +221,42 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
     });
 
     newSocket.on('viewer-joined', (data) => {
-      setViewerCount(prev => prev + 1);
+      setViewerCount(prev => {
+        const newCount = prev + 1;
+        updateViewerCount(newCount);
+        return newCount;
+      });
     });
 
     newSocket.on('viewer-left', (data) => {
-      setViewerCount(prev => Math.max(0, prev - 1));
+      setViewerCount(prev => {
+        const newCount = Math.max(0, prev - 1);
+        updateViewerCount(newCount);
+        return newCount;
+      });
     });
 
     newSocket.on('new-comment', (comment) => {
       setComments(prev => [...prev, comment]);
     });
+  };
+
+  // Update viewer count in database
+  const updateViewerCount = async (newCount: number) => {
+    if (!streamId) return;
+
+    try {
+      const { error } = await supabase
+        .from('live_streams')
+        .update({ viewer_count: newCount })
+        .eq('id', streamId);
+
+      if (error) {
+        console.error('Error updating viewer count:', error);
+      }
+    } catch (error) {
+      console.error('Error updating viewer count:', error);
+    }
   };
 
   const startLive = async () => {
@@ -239,12 +266,37 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
     }
 
     try {
-      setIsLive(true);
-      setViewerCount(Math.floor(Math.random() * 20) + 5);
+      // Get current user
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        Alert.alert('Error', 'Please sign in to start a live stream');
+        return;
+      }
 
-      // Generate unique stream ID
-      const newStreamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      setStreamId(newStreamId);
+      // Create live stream record in database
+      const { data: streamData, error: streamError } = await supabase
+        .from('live_streams')
+        .insert({
+          streamer_id: authUser.id,
+          title: streamTitle,
+          language: streamLanguage,
+          is_live: true,
+          viewer_count: 0,
+          started_at: new Date().toISOString(),
+          stream_key: `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        })
+        .select()
+        .single();
+
+      if (streamError) {
+        console.error('Error creating live stream:', streamError);
+        Alert.alert('Error', 'Failed to create live stream');
+        return;
+      }
+
+      setIsLive(true);
+      setViewerCount(0);
+      setStreamId(streamData.id);
 
       Alert.alert('🎉 You\'re Live!', 'Your stream has started successfully!');
     } catch (error) {
@@ -262,11 +314,36 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
         {
           text: 'End Stream',
           style: 'destructive',
-          onPress: () => {
-            cleanup();
-            setIsLive(false);
-            setDuration(0);
-            navigation.goBack();
+          onPress: async () => {
+            try {
+              // Update live stream in database
+              if (streamId) {
+                const { error } = await supabase
+                  .from('live_streams')
+                  .update({
+                    is_live: false,
+                    ended_at: new Date().toISOString(),
+                    viewer_count: viewerCount,
+                  })
+                  .eq('id', streamId);
+
+                if (error) {
+                  console.error('Error ending live stream:', error);
+                }
+              }
+
+              cleanup();
+              setIsLive(false);
+              setDuration(0);
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error ending live stream:', error);
+              // Still clean up locally even if database update fails
+              cleanup();
+              setIsLive(false);
+              setDuration(0);
+              navigation.goBack();
+            }
           },
         },
       ]
@@ -519,13 +596,22 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
 
-        <FlatList
-          data={comments}
-          renderItem={renderComment}
-          keyExtractor={(item) => item.id}
+        <ScrollView
           style={styles.commentsList}
           showsVerticalScrollIndicator={false}
-        />
+        >
+          {comments.map((item) => (
+            <View key={item.id} style={styles.commentItem}>
+              <Text style={styles.commentUser}>{item.user.name}:</Text>
+              <Text style={styles.commentMessage}>
+                {showTranslations && item.isTranslated ? item.translatedMessage : item.message}
+              </Text>
+              {showTranslations && item.isTranslated && (
+                <Text style={styles.originalMessage}>Original: {item.originalMessage}</Text>
+              )}
+            </View>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Bottom Controls */}

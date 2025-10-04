@@ -113,6 +113,19 @@ interface Post {
   isAIGenerated?: boolean;
 }
 
+interface LiveStream {
+  id: string;
+  streamer_id: string;
+  streamer_name: string;
+  streamer_avatar: string;
+  title: string;
+  language: string;
+  viewer_count: number;
+  thumbnail_url?: string;
+  is_live: boolean;
+  started_at: string;
+}
+
 
 
 const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
@@ -126,7 +139,112 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
   const { user } = useAuth();
+
+  // Create sample live streams for testing (remove this in production)
+  const createSampleLiveStreams = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      // Check if we already have live streams
+      const { data: existingStreams } = await supabase
+        .from('live_streams')
+        .select('id')
+        .eq('is_live', true)
+        .limit(1);
+
+      if (existingStreams && existingStreams.length > 0) {
+        return; // Already have live streams
+      }
+
+      // Create sample live streams
+      const sampleStreams = [
+        {
+          streamer_id: user.id,
+          title: 'Learning Spanish Together! 🇪🇸',
+          language: 'Spanish',
+          is_live: true,
+          viewer_count: Math.floor(Math.random() * 50) + 10,
+          started_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+        },
+        {
+          streamer_id: user.id,
+          title: 'Arabic Conversation Practice 🕌',
+          language: 'Arabic',
+          is_live: true,
+          viewer_count: Math.floor(Math.random() * 30) + 5,
+          started_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
+        },
+      ];
+
+      const { error } = await supabase
+        .from('live_streams')
+        .insert(sampleStreams);
+
+      if (error) {
+        console.error('Error creating sample streams:', error);
+      } else {
+        console.log('Sample live streams created');
+      }
+    } catch (error) {
+      console.error('Error creating sample streams:', error);
+    }
+  }, [user]);
+
+  // Fetch live streams from database
+  const fetchLiveStreams = useCallback(async () => {
+    try {
+      const { data: liveStreamsData, error } = await supabase
+        .from('live_streams')
+        .select(`
+          *,
+          profiles!live_streams_streamer_id_fkey (
+            id,
+            full_name,
+            username,
+            avatar_url,
+            primary_language
+          )
+        `)
+        .eq('is_live', true)
+        .order('started_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error('Error fetching live streams:', error);
+        return;
+      }
+
+      const formattedStreams: LiveStream[] = (liveStreamsData || []).map((stream) => {
+        const streamer = stream.profiles;
+        return {
+          id: stream.id,
+          streamer_id: stream.streamer_id,
+          streamer_name: streamer?.full_name || 'Anonymous',
+          streamer_avatar: streamer?.avatar_url ? '👤' : '👤', // Will be replaced with actual avatar
+          title: stream.title,
+          language: stream.language,
+          viewer_count: stream.viewer_count || 0,
+          thumbnail_url: stream.thumbnail_url,
+          is_live: stream.is_live,
+          started_at: stream.started_at,
+        };
+      });
+
+      setLiveStreams(formattedStreams);
+      console.log('Fetched live streams:', formattedStreams.length);
+
+      // Create sample streams if none exist (for testing)
+      if (formattedStreams.length === 0) {
+        await createSampleLiveStreams();
+        // Refetch after creating samples
+        setTimeout(() => fetchLiveStreams(), 1000);
+      }
+    } catch (error) {
+      console.error('Error fetching live streams:', error);
+    }
+  }, [user, createSampleLiveStreams]);
 
   // Fetch real voice and video clips with user information from database
   const fetchRealContent = useCallback(async (isRefresh = false) => {
@@ -281,6 +399,35 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   useEffect(() => {
     fetchRealContent();
   }, [fetchRealContent]);
+
+  // Fetch live streams when Live tab is active
+  useEffect(() => {
+    if (activeTab === 'Live') {
+      fetchLiveStreams();
+    }
+  }, [activeTab, fetchLiveStreams]);
+
+  // Real-time updates for live streams
+  useEffect(() => {
+    if (activeTab !== 'Live') return;
+
+    const channel = supabase
+      .channel('live-streams-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'live_streams' },
+        (payload) => {
+          console.log('Live stream change detected:', payload);
+          // Refresh live streams when changes occur
+          fetchLiveStreams();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [activeTab, fetchLiveStreams]);
 
   // Refresh when screen comes into focus (user returns from recording)
   useFocusEffect(
@@ -1429,23 +1576,68 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       >
         {activeTab === 'Live' ? (
           <View style={styles.liveSection}>
-            <Text style={styles.liveSectionTitle}>Live Now</Text>
-            <TouchableOpacity
-              style={styles.liveCard}
-              onPress={() => navigation.navigate('TurnVerse')}
-            >
-              <View style={styles.liveCardContent}>
-                <Text style={styles.liveCardEmoji}>🎮</Text>
-                <View style={styles.liveCardInfo}>
-                  <Text style={styles.liveCardTitle}>TurnVerse Games</Text>
-                  <Text style={styles.liveCardDesc}>12 rooms active • 234 playing</Text>
-                </View>
-                <View style={styles.liveCardBadge}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveCardBadgeText}>LIVE</Text>
-                </View>
+            <View style={styles.liveSectionHeader}>
+              <Text style={styles.liveSectionTitle}>Live Now</Text>
+            </View>
+
+            {liveStreams.length > 0 ? (
+              <FlatList
+                data={liveStreams}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.liveStreamCard}
+                    onPress={() => navigation.navigate('LiveStreaming', {
+                      mode: 'viewer',
+                      streamId: item.id,
+                      streamerId: item.streamer_id,
+                      streamerName: item.streamer_name
+                    })}
+                  >
+                    <View style={styles.liveStreamContent}>
+                      <View style={styles.liveStreamAvatar}>
+                        <Text style={styles.liveStreamAvatarText}>{item.streamer_avatar}</Text>
+                        <View style={styles.liveIndicator}>
+                          <View style={styles.liveDot} />
+                        </View>
+                      </View>
+
+                      <View style={styles.liveStreamInfo}>
+                        <Text style={styles.liveStreamTitle}>{item.title}</Text>
+                        <Text style={styles.liveStreamStreamer}>{item.streamer_name}</Text>
+                        <View style={styles.liveStreamMeta}>
+                          <Text style={styles.liveStreamLanguage}>{item.language}</Text>
+                          <Text style={styles.liveStreamViewers}>{item.viewer_count} watching</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.liveStreamActions}>
+                        <View style={styles.liveStreamBadge}>
+                          <View style={styles.liveDot} />
+                          <Text style={styles.liveStreamBadgeText}>LIVE</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.liveStreamsList}
+              />
+            ) : (
+              <View style={styles.noLiveStreams}>
+                <Text style={styles.noLiveStreamsEmoji}>📺</Text>
+                <Text style={styles.noLiveStreamsTitle}>No Live Streams</Text>
+                <Text style={styles.noLiveStreamsDesc}>Be the first to go live!</Text>
+                <TouchableOpacity
+                  style={styles.startFirstLiveButton}
+                  onPress={() => navigation.navigate('LiveStreaming', { mode: 'streamer' })}
+                >
+                  <Ionicons name="videocam" size={20} color="#FFFFFF" />
+                  <Text style={styles.startFirstLiveButtonText}>Start Your Stream</Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+            )}
           </View>
         ) : isLoading ? (
           <View style={styles.loadingContainer}>
@@ -1546,11 +1738,145 @@ const styles = StyleSheet.create({
   liveSection: {
     marginBottom: 20,
   },
+  liveSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   liveSectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  startLiveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF8A00',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  startLiveButtonText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  liveStreamsList: {
+    paddingBottom: 20,
+  },
+  liveStreamCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  liveStreamContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  liveStreamAvatar: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  liveStreamAvatarText: {
+    fontSize: 32,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F3F4F6',
+    textAlign: 'center',
+    lineHeight: 48,
+  },
+  liveStreamInfo: {
+    flex: 1,
+  },
+  liveStreamTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  liveStreamStreamer: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  liveStreamMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  liveStreamLanguage: {
+    fontSize: 12,
+    color: '#10B981',
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  liveStreamViewers: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  liveStreamActions: {
+    alignItems: 'center',
+  },
+  liveStreamBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  liveStreamBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  noLiveStreams: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  noLiveStreamsEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  noLiveStreamsTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  noLiveStreamsDesc: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 24,
+  },
+  startFirstLiveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF8A00',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  startFirstLiveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   liveCard: {
     backgroundColor: '#FFFFFF',

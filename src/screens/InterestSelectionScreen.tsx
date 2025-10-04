@@ -95,7 +95,6 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      // Save all interests and mark onboarding complete
       if (user?.id) {
         const { data: saved, error: upsertError } = await supabase
           .from('profiles')
@@ -117,11 +116,9 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
           return;
         }
 
-        console.log('Interests saved successfully. Navigating to MainTabs (root reset).');
-        navigation.getParent()?.reset({
-          index: 0,
-          routes: [{ name: 'MainTabs', params: { screen: 'Home' } }],
-        });
+        console.log('Interests saved successfully.');
+        // Don't navigate manually - let AuthGate detect the change
+        // The Supabase realtime subscription in AuthGate will handle this
       }
     } catch (error) {
       console.error('Error in handleContinue:', error);
@@ -166,8 +163,8 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
           return;
         }
 
-        console.log('Onboarding skipped successfully. Navigating to MainTabs (root reset).');
-        navigation.getParent?.()?.reset({ index: 0, routes: [{ name: 'MainTabs' as never, params: { screen: 'Home' } as never }] });
+        console.log('Onboarding skipped successfully. Navigating to Home tab.');
+        navigation.navigate('MainTabs', { screen: 'Home' });
       }
     } catch (e) {
       console.error('Error marking onboarding complete on skip:', e);

@@ -787,7 +787,6 @@ const AuthGate = () => {
   }, [session]);
 
   if (loading || (session && (checking || onboardingComplete === null))) {
-    console.log('AuthGate: Showing loading screen');
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
         <ActivityIndicator size="large" color="#FF8A00" />
