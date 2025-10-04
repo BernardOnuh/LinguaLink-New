@@ -142,56 +142,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
   const { user } = useAuth();
 
-  // Create sample live streams for testing (remove this in production)
-  const createSampleLiveStreams = useCallback(async () => {
-    if (!user) return;
-
-    try {
-      // Check if we already have live streams
-      const { data: existingStreams } = await supabase
-        .from('live_streams')
-        .select('id')
-        .eq('is_live', true)
-        .limit(1);
-
-      if (existingStreams && existingStreams.length > 0) {
-        return; // Already have live streams
-      }
-
-      // Create sample live streams
-      const sampleStreams = [
-        {
-          streamer_id: user.id,
-          title: 'Learning Spanish Together! 🇪🇸',
-          language: 'Spanish',
-          is_live: true,
-          viewer_count: Math.floor(Math.random() * 50) + 10,
-          started_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        },
-        {
-          streamer_id: user.id,
-          title: 'Arabic Conversation Practice 🕌',
-          language: 'Arabic',
-          is_live: true,
-          viewer_count: Math.floor(Math.random() * 30) + 5,
-          started_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-        },
-      ];
-
-      const { error } = await supabase
-        .from('live_streams')
-        .insert(sampleStreams);
-
-      if (error) {
-        console.error('Error creating sample streams:', error);
-      } else {
-        console.log('Sample live streams created');
-      }
-    } catch (error) {
-      console.error('Error creating sample streams:', error);
-    }
-  }, [user]);
-
   // Fetch live streams from database
   const fetchLiveStreams = useCallback(async () => {
     try {
@@ -234,17 +184,10 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
       setLiveStreams(formattedStreams);
       console.log('Fetched live streams:', formattedStreams.length);
-
-      // Create sample streams if none exist (for testing)
-      if (formattedStreams.length === 0) {
-        await createSampleLiveStreams();
-        // Refetch after creating samples
-        setTimeout(() => fetchLiveStreams(), 1000);
-      }
     } catch (error) {
       console.error('Error fetching live streams:', error);
     }
-  }, [user, createSampleLiveStreams]);
+  }, [user]);
 
   // Fetch real voice and video clips with user information from database
   const fetchRealContent = useCallback(async (isRefresh = false) => {
@@ -1587,11 +1530,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={styles.liveStreamCard}
-                    onPress={() => navigation.navigate('LiveStreaming', {
-                      mode: 'viewer',
-                      streamId: item.id,
-                      streamerId: item.streamer_id,
-                      streamerName: item.streamer_name
+                    onPress={() => navigation.navigate('LiveStream', {
+                      roomId: item.id
                     })}
                   >
                     <View style={styles.liveStreamContent}>
@@ -1631,7 +1571,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 <Text style={styles.noLiveStreamsDesc}>Be the first to go live!</Text>
                 <TouchableOpacity
                   style={styles.startFirstLiveButton}
-                  onPress={() => navigation.navigate('LiveStreaming', { mode: 'streamer' })}
+                  onPress={() => navigation.navigate('LiveStream', { isHost: true })}
                 >
                   <Ionicons name="videocam" size={20} color="#FFFFFF" />
                   <Text style={styles.startFirstLiveButtonText}>Start Your Stream</Text>
