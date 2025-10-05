@@ -571,7 +571,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
               )}
             </TouchableOpacity>
           </View>
-          <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+          <View style={styles.profileNameRow}>
+            <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+            <Ionicons name="checkmark-circle" size={16} color="#3B82F6" style={styles.verifiedIcon} />
+          </View>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
           <TouchableOpacity
             style={styles.languageTag}
@@ -789,6 +792,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
+  },
+  profileNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  verifiedIcon: {
+    marginLeft: 6,
   },
   profileUsername: {
     fontSize: 16,
