@@ -102,6 +102,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     return `${Math.floor(diffInSeconds / 31536000)}y ago`;
   };
 
+  const formatJoinDate = (dateString?: string): string => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const formatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+    return formatter.format(date);
+  };
+
   // Fetch user profile from database
   const fetchUserProfile = async () => {
     if (!authUser?.id) return;
@@ -576,6 +583,17 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             <Ionicons name="checkmark-circle" size={16} color="#3B82F6" style={styles.verifiedIcon} />
           </View>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
+          <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
+              <Ionicons name="location-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metaText}>{userProfile?.location || 'Unknown'}</Text>
+            </View>
+            <View style={styles.metaSeparator} />
+            <View style={styles.metaItem}>
+              <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metaText}>Joined {formatJoinDate(userProfile?.created_at)}</Text>
+            </View>
+          </View>
           <TouchableOpacity
             style={styles.languageTag}
             onPress={() => setShowLanguagePicker(true)}
@@ -805,6 +823,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.8)',
     marginBottom: 8,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  metaSeparator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
   },
   languageTag: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
