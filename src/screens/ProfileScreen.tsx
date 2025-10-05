@@ -13,6 +13,8 @@ import {
   RefreshControl,
   Image,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -88,6 +90,11 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   // Language picker state
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>(undefined);
+
+  // Bio editor state
+  const [showBioEditor, setShowBioEditor] = useState(false);
+  const [bioInput, setBioInput] = useState('');
+  const BIO_CHAR_LIMIT = 200;
 
   // Helper function to format time ago
   const getTimeAgo = (dateString: string): string => {
@@ -290,6 +297,34 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     } catch (error) {
       console.error('Error updating primary language:', error);
       Alert.alert('Error', 'Failed to update primary language');
+    }
+  };
+
+  // Open bio editor prefilled
+  const openBioEditor = () => {
+    setBioInput(userProfile?.bio || '');
+    setShowBioEditor(true);
+  };
+
+  // Save bio to Supabase and local state
+  const saveBio = async () => {
+    if (!authUser?.id) return;
+    const input = bioInput.trim();
+    if (input.length > BIO_CHAR_LIMIT) {
+      Alert.alert('Bio too long', `Please keep it under ${BIO_CHAR_LIMIT} characters.`);
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ bio: input, updated_at: new Date().toISOString() })
+        .eq('id', authUser.id);
+      if (error) throw error;
+      setUserProfile(prev => prev ? { ...prev, bio: input } : prev);
+      setShowBioEditor(false);
+    } catch (e) {
+      console.error('Error saving bio:', e);
+      Alert.alert('Error', 'Failed to save bio. Please try again.');
     }
   };
 
@@ -602,6 +637,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             <Ionicons name="checkmark-circle" size={16} color="#3B82F6" style={styles.verifiedIcon} />
           </View>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
+          {!!userProfile?.bio ? (
+            <TouchableOpacity onPress={openBioEditor} activeOpacity={0.8}>
+              <Text style={styles.bioText}>{userProfile.bio}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={openBioEditor} activeOpacity={0.8}>
+              <Text style={styles.bioPrompt}>Add a short bio…</Text>
+            </TouchableOpacity>
+          )}
           <View style={styles.metaRow}>
             <View style={styles.metaItem}>
               <Ionicons name="location-outline" size={14} color="#FFFFFF" />
@@ -764,6 +808,40 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         onSelect={handleLanguageSelect}
         selectedLanguage={selectedLanguage}
       />
+
+      {/* Bio Editor Modal */}
+      <Modal
+        visible={showBioEditor}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBioEditor(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit Bio</Text>
+            <TextInput
+              style={styles.bioInput}
+              value={bioInput}
+              onChangeText={setBioInput}
+              placeholder="Tell others about your language interests"
+              placeholderTextColor="#9CA3AF"
+              maxLength={BIO_CHAR_LIMIT}
+              multiline
+            />
+            <View style={styles.modalFooter}>
+              <Text style={styles.charCount}>{bioInput.length}/{BIO_CHAR_LIMIT}</Text>
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#E5E7EB' }]} onPress={() => setShowBioEditor(false)}>
+                  <Text style={[styles.modalButtonText, { color: '#111827' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#FF8A00' }]} onPress={saveBio}>
+                  <Text style={styles.modalButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -847,6 +925,22 @@ const styles = StyleSheet.create({
   profileUsername: {
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 8,
+  },
+  bioText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.95,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  bioPrompt: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingHorizontal: 24,
     marginBottom: 8,
   },
   metaRow: {
@@ -1055,6 +1149,55 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 14,
     color: '#9CA3AF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  bioInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    textAlignVertical: 'top',
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+  },
+  modalFooter: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  charCount: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   rewardsSection: {
     paddingHorizontal: width * 0.05,
