@@ -96,6 +96,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [bioInput, setBioInput] = useState('');
   const BIO_CHAR_LIMIT = 200;
 
+  // Location editor state
+  const [showLocationEditor, setShowLocationEditor] = useState(false);
+  const [locationInput, setLocationInput] = useState('');
+
   // Helper function to format time ago
   const getTimeAgo = (dateString: string): string => {
     const now = new Date();
@@ -325,6 +329,30 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     } catch (e) {
       console.error('Error saving bio:', e);
       Alert.alert('Error', 'Failed to save bio. Please try again.');
+    }
+  };
+
+  // Open location editor prefilled
+  const openLocationEditor = () => {
+    setLocationInput(userProfile?.location || '');
+    setShowLocationEditor(true);
+  };
+
+  // Save location
+  const saveLocation = async () => {
+    if (!authUser?.id) return;
+    const input = locationInput.trim();
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ location: input || null, updated_at: new Date().toISOString() })
+        .eq('id', authUser.id);
+      if (error) throw error;
+      setUserProfile(prev => prev ? { ...prev, location: input || undefined } : prev);
+      setShowLocationEditor(false);
+    } catch (e) {
+      console.error('Error saving location:', e);
+      Alert.alert('Error', 'Failed to save location. Please try again.');
     }
   };
 
@@ -647,10 +675,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
           )}
           <View style={styles.metaRow}>
-            <View style={styles.metaItem}>
+            <TouchableOpacity style={styles.metaItem} onPress={openLocationEditor} activeOpacity={0.8}>
               <Ionicons name="location-outline" size={14} color="#FFFFFF" />
-              <Text style={styles.metaText}>{userProfile?.location || 'Unknown'}</Text>
-            </View>
+              <Text style={styles.metaText}>{userProfile?.location || 'Add location'}</Text>
+            </TouchableOpacity>
             <View style={styles.metaSeparator} />
             <View style={styles.metaItem}>
               <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
@@ -835,6 +863,38 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                   <Text style={[styles.modalButtonText, { color: '#111827' }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#FF8A00' }]} onPress={saveBio}>
+                  <Text style={styles.modalButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Location Editor Modal */}
+      <Modal
+        visible={showLocationEditor}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLocationEditor(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit Location</Text>
+            <TextInput
+              style={styles.bioInput}
+              value={locationInput}
+              onChangeText={setLocationInput}
+              placeholder="City, Country"
+              placeholderTextColor="#9CA3AF"
+            />
+            <View style={styles.modalFooter}>
+              <View />
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#E5E7EB' }]} onPress={() => setShowLocationEditor(false)}>
+                  <Text style={[styles.modalButtonText, { color: '#111827' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#FF8A00' }]} onPress={saveLocation}>
                   <Text style={styles.modalButtonText}>Save</Text>
                 </TouchableOpacity>
               </View>
