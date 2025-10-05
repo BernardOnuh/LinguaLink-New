@@ -13,6 +13,8 @@ import {
   RefreshControl,
   Image,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -76,6 +78,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [videoStoriesCount, setVideoStoriesCount] = useState(0);
 
   // Avatar editing state
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -87,6 +90,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   // Language picker state
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>(undefined);
+
+  // Bio editor state
+  const [showBioEditor, setShowBioEditor] = useState(false);
+  const [bioInput, setBioInput] = useState('');
+  const BIO_CHAR_LIMIT = 200;
+
+  // Location editor state
+  const [showLocationEditor, setShowLocationEditor] = useState(false);
+  const [locationInput, setLocationInput] = useState('');
 
   // Helper function to format time ago
   const getTimeAgo = (dateString: string): string => {
@@ -100,6 +112,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
     if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
     return `${Math.floor(diffInSeconds / 31536000)}y ago`;
+  };
+
+  const formatJoinDate = (dateString?: string): string => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const formatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+    return formatter.format(date);
   };
 
   // Fetch user profile from database
@@ -210,6 +229,23 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Fetch user's video stories count (from video_clips)
+  const fetchVideoStoriesCount = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      const { count, error } = await supabase
+        .from('video_clips')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', authUser.id);
+
+      if (error) throw error;
+      setVideoStoriesCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching video stories count:', error);
+    }
+  };
+
   // Fetch follower/following counts
   const fetchFollowCounts = async () => {
     if (!authUser?.id) return;
@@ -268,6 +304,58 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Open bio editor prefilled
+  const openBioEditor = () => {
+    setBioInput(userProfile?.bio || '');
+    setShowBioEditor(true);
+  };
+
+  // Save bio to Supabase and local state
+  const saveBio = async () => {
+    if (!authUser?.id) return;
+    const input = bioInput.trim();
+    if (input.length > BIO_CHAR_LIMIT) {
+      Alert.alert('Bio too long', `Please keep it under ${BIO_CHAR_LIMIT} characters.`);
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ bio: input, updated_at: new Date().toISOString() })
+        .eq('id', authUser.id);
+      if (error) throw error;
+      setUserProfile(prev => prev ? { ...prev, bio: input } : prev);
+      setShowBioEditor(false);
+    } catch (e) {
+      console.error('Error saving bio:', e);
+      Alert.alert('Error', 'Failed to save bio. Please try again.');
+    }
+  };
+
+  // Open location editor prefilled
+  const openLocationEditor = () => {
+    setLocationInput(userProfile?.location || '');
+    setShowLocationEditor(true);
+  };
+
+  // Save location
+  const saveLocation = async () => {
+    if (!authUser?.id) return;
+    const input = locationInput.trim();
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ location: input || null, updated_at: new Date().toISOString() })
+        .eq('id', authUser.id);
+      if (error) throw error;
+      setUserProfile(prev => prev ? { ...prev, location: input || undefined } : prev);
+      setShowLocationEditor(false);
+    } catch (e) {
+      console.error('Error saving location:', e);
+      Alert.alert('Error', 'Failed to save location. Please try again.');
+    }
+  };
+
 
   // Load all profile data
   const loadProfileData = async () => {
@@ -278,7 +366,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       await Promise.all([
         fetchUserProfile(),
         fetchVoiceClips(),
-        fetchFollowCounts()
+        fetchFollowCounts(),
+        fetchVideoStoriesCount()
       ]);
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -571,8 +660,31 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
               )}
             </TouchableOpacity>
           </View>
-          <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+          <View style={styles.profileNameRow}>
+            <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+            <Ionicons name="checkmark-circle" size={16} color="#3B82F6" style={styles.verifiedIcon} />
+          </View>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
+          {!!userProfile?.bio ? (
+            <TouchableOpacity onPress={openBioEditor} activeOpacity={0.8}>
+              <Text style={styles.bioText}>{userProfile.bio}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={openBioEditor} activeOpacity={0.8}>
+              <Text style={styles.bioPrompt}>Add a short bio…</Text>
+            </TouchableOpacity>
+          )}
+          <View style={styles.metaRow}>
+            <TouchableOpacity style={styles.metaItem} onPress={openLocationEditor} activeOpacity={0.8}>
+              <Ionicons name="location-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metaText}>{userProfile?.location || 'Add location'}</Text>
+            </TouchableOpacity>
+            <View style={styles.metaSeparator} />
+            <View style={styles.metaItem}>
+              <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metaText}>Joined {formatJoinDate(userProfile?.created_at)}</Text>
+            </View>
+          </View>
           <TouchableOpacity
             style={styles.languageTag}
             onPress={() => setShowLanguagePicker(true)}
@@ -585,7 +697,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.followStats}>
             <View style={styles.followStatItem}>
               <Text style={styles.followStatNumber}>{followerCount}</Text>
-              <Text style={styles.followStatLabel}>Followers</Text>
+            <Text style={styles.followStatLabel}>Followers</Text>
             </View>
             <View style={styles.followStatItem}>
               <Text style={styles.followStatNumber}>{followingCount}</Text>
@@ -597,18 +709,24 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Validations</Text>
+            <Text style={styles.statNumber}>
+              {voiceClips.reduce((sum, clip) => sum + (clip.validations || 0), 0)}
+            </Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Validations</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{voiceClips.length}</Text>
-            <Text style={styles.statLabel}>Contributions</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Clips</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{videoStoriesCount}</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Stories</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
               {voiceClips.filter(clip => clip.clip_type === 'duet').length}
             </Text>
-            <Text style={styles.statLabel}>Duets</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Duets</Text>
           </View>
         </View>
       </View>
@@ -718,6 +836,72 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         onSelect={handleLanguageSelect}
         selectedLanguage={selectedLanguage}
       />
+
+      {/* Bio Editor Modal */}
+      <Modal
+        visible={showBioEditor}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBioEditor(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit Bio</Text>
+            <TextInput
+              style={styles.bioInput}
+              value={bioInput}
+              onChangeText={setBioInput}
+              placeholder="Tell others about your language interests"
+              placeholderTextColor="#9CA3AF"
+              maxLength={BIO_CHAR_LIMIT}
+              multiline
+            />
+            <View style={styles.modalFooter}>
+              <Text style={styles.charCount}>{bioInput.length}/{BIO_CHAR_LIMIT}</Text>
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#E5E7EB' }]} onPress={() => setShowBioEditor(false)}>
+                  <Text style={[styles.modalButtonText, { color: '#111827' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#FF8A00' }]} onPress={saveBio}>
+                  <Text style={styles.modalButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Location Editor Modal */}
+      <Modal
+        visible={showLocationEditor}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLocationEditor(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit Location</Text>
+            <TextInput
+              style={styles.bioInput}
+              value={locationInput}
+              onChangeText={setLocationInput}
+              placeholder="City, Country"
+              placeholderTextColor="#9CA3AF"
+            />
+            <View style={styles.modalFooter}>
+              <View />
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#E5E7EB' }]} onPress={() => setShowLocationEditor(false)}>
+                  <Text style={[styles.modalButtonText, { color: '#111827' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#FF8A00' }]} onPress={saveLocation}>
+                  <Text style={styles.modalButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -790,10 +974,55 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 4,
   },
+  profileNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  verifiedIcon: {
+    marginLeft: 6,
+  },
   profileUsername: {
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.8)',
     marginBottom: 8,
+  },
+  bioText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.95,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  bioPrompt: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  metaSeparator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
   },
   languageTag: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -830,6 +1059,9 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
+    flexShrink: 1,
+    maxWidth: '100%',
+    textAlign: 'center',
   },
   tabContainer: {
     flexDirection: 'row',
@@ -978,6 +1210,55 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9CA3AF',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  bioInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    textAlignVertical: 'top',
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+  },
+  modalFooter: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  charCount: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
   rewardsSection: {
     paddingHorizontal: width * 0.05,
     paddingTop: 20,
@@ -1064,6 +1345,10 @@ const styles = StyleSheet.create({
   },
   followStatLabel: {
     fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  followStatSubLabel: {
+    fontSize: 10,
     color: 'rgba(255, 255, 255, 0.8)',
   },
 });

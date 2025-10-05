@@ -87,6 +87,7 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   NewPassword: { resetCode?: string } | undefined;
   VerifyEmail: { email?: string } | undefined;
+  OTPVerification: { email: string };
   AuthCallback: { code?: string } | undefined;
   InterestSelection: undefined;
   MainTabs: undefined;

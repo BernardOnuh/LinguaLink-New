@@ -74,6 +74,8 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const [followLoading, setFollowLoading] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [mutualFollowersCount, setMutualFollowersCount] = useState<number | null>(null);
+  const [videoStoriesCount, setVideoStoriesCount] = useState(0);
 
   const targetUserId = route.params.userId;
 
@@ -89,6 +91,13 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
     if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
     return `${Math.floor(diffInSeconds / 31536000)}y ago`;
+  };
+
+  const formatJoinDate = (dateString?: string): string => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const formatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+    return formatter.format(date);
   };
 
   // Fetch user profile from database
@@ -162,6 +171,21 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  // Fetch user's video stories count (from video_clips)
+  const fetchVideoStoriesCount = async () => {
+    if (!targetUserId) return;
+    try {
+      const { count, error } = await supabase
+        .from('video_clips')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', targetUserId);
+      if (error) throw error;
+      setVideoStoriesCount(count || 0);
+    } catch (e) {
+      console.error('Error fetching video stories count:', e);
+    }
+  };
+
   // Fetch follow status and counts
   const fetchFollowData = async () => {
     if (!authUser?.id || !targetUserId) return;
@@ -198,6 +222,12 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
 
       if (followingError) throw followingError;
       setFollowingCount(followingCount || 0);
+
+      // Mutual followers between current viewer and target user
+      const { data: mutualCount, error: mutualError } = await supabase
+        .rpc('get_mutual_followers_count', { viewer: authUser.id, profile: targetUserId });
+      if (mutualError) throw mutualError;
+      setMutualFollowersCount(typeof mutualCount === 'number' ? mutualCount : 0);
 
     } catch (error) {
       console.error('Error fetching follow data:', error);
@@ -311,7 +341,8 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       await Promise.all([
         fetchUserProfile(),
         fetchVoiceClips(),
-        fetchFollowData()
+        fetchFollowData(),
+        fetchVideoStoriesCount()
       ]);
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -486,8 +517,25 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
               )}
             </View>
           </View>
-          <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+          <View style={styles.profileNameRow}>
+            <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+            <Ionicons name="checkmark-circle" size={16} color="#3B82F6" style={styles.verifiedIcon} />
+          </View>
           <Text style={styles.profileUsername}>@{userProfile?.username || 'user'}</Text>
+          {!!userProfile?.bio && (
+            <Text style={styles.bioText}>{userProfile.bio}</Text>
+          )}
+          <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
+              <Ionicons name="location-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metaText}>{userProfile?.location || 'Unknown'}</Text>
+            </View>
+            <View style={styles.metaSeparator} />
+            <View style={styles.metaItem}>
+              <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metaText}>Joined {formatJoinDate(userProfile?.created_at)}</Text>
+            </View>
+          </View>
           <View style={styles.languageTag}>
             <Text style={styles.languageText}>{userProfile?.primary_language || 'Unknown Language'}</Text>
           </View>
@@ -497,6 +545,9 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
             <View style={styles.followStatItem}>
               <Text style={styles.followStatNumber}>{followerCount}</Text>
               <Text style={styles.followStatLabel}>Followers</Text>
+            {mutualFollowersCount !== null && (
+              <Text style={styles.followStatSubLabel}>{mutualFollowersCount} mutual</Text>
+            )}
             </View>
             <View style={styles.followStatItem}>
               <Text style={styles.followStatNumber}>{followingCount}</Text>
@@ -508,18 +559,24 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Validations</Text>
+            <Text style={styles.statNumber}>
+              {voiceClips.reduce((sum, clip) => sum + (clip.validations || 0), 0)}
+            </Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Validations</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{voiceClips.length}</Text>
-            <Text style={styles.statLabel}>Contributions</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Clips</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{videoStoriesCount}</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Stories</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
               {voiceClips.filter(clip => clip.clip_type === 'duet').length}
             </Text>
-            <Text style={styles.statLabel}>Duets</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Duets</Text>
           </View>
         </View>
       </View>
@@ -673,10 +730,47 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 4,
   },
+  profileNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  verifiedIcon: {
+    marginLeft: 6,
+  },
   profileUsername: {
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.8)',
     marginBottom: 8,
+  },
+  bioText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.95,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  metaSeparator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
   },
   languageTag: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -710,6 +804,9 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
+    flexShrink: 1,
+    maxWidth: '100%',
+    textAlign: 'center',
   },
   tabContainer: {
     flexDirection: 'row',
@@ -924,6 +1021,10 @@ const styles = StyleSheet.create({
   },
   followStatLabel: {
     fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  followStatSubLabel: {
+    fontSize: 10,
     color: 'rgba(255, 255, 255, 0.8)',
   },
   clipActions: {
