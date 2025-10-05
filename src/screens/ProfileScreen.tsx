@@ -76,6 +76,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [videoStoriesCount, setVideoStoriesCount] = useState(0);
 
   // Avatar editing state
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -217,6 +218,23 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Fetch user's video stories count (from video_clips)
+  const fetchVideoStoriesCount = async () => {
+    if (!authUser?.id) return;
+
+    try {
+      const { count, error } = await supabase
+        .from('video_clips')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', authUser.id);
+
+      if (error) throw error;
+      setVideoStoriesCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching video stories count:', error);
+    }
+  };
+
   // Fetch follower/following counts
   const fetchFollowCounts = async () => {
     if (!authUser?.id) return;
@@ -285,7 +303,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       await Promise.all([
         fetchUserProfile(),
         fetchVoiceClips(),
-        fetchFollowCounts()
+        fetchFollowCounts(),
+        fetchVideoStoriesCount()
       ]);
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -618,18 +637,24 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Validations</Text>
+            <Text style={styles.statNumber}>
+              {voiceClips.reduce((sum, clip) => sum + (clip.validations || 0), 0)}
+            </Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Validations</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{voiceClips.length}</Text>
-            <Text style={styles.statLabel}>Contributions</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Clips</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{videoStoriesCount}</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Stories</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
               {voiceClips.filter(clip => clip.clip_type === 'duet').length}
             </Text>
-            <Text style={styles.statLabel}>Duets</Text>
+            <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="clip">Duets</Text>
           </View>
         </View>
       </View>
@@ -880,6 +905,9 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
+    flexShrink: 1,
+    maxWidth: '100%',
+    textAlign: 'center',
   },
   tabContainer: {
     flexDirection: 'row',
