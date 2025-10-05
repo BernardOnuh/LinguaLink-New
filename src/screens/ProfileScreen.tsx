@@ -47,7 +47,7 @@ interface VoiceClip {
   validations: number;
   duets: number;
   timeAgo: string;
-  clip_type?: 'original' | 'duet' | 'remix';
+  clip_type?: 'original' | 'duet';
   original_clip_id?: string;
 }
 
