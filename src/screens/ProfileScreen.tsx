@@ -697,7 +697,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.followStats}>
             <View style={styles.followStatItem}>
               <Text style={styles.followStatNumber}>{followerCount}</Text>
-              <Text style={styles.followStatLabel}>Followers</Text>
+            <Text style={styles.followStatLabel}>Followers</Text>
             </View>
             <View style={styles.followStatItem}>
               <Text style={styles.followStatNumber}>{followingCount}</Text>
@@ -1345,6 +1345,10 @@ const styles = StyleSheet.create({
   },
   followStatLabel: {
     fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  followStatSubLabel: {
+    fontSize: 10,
     color: 'rgba(255, 255, 255, 0.8)',
   },
 });

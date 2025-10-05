@@ -980,8 +980,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               <Ionicons name="game-controller" size={24} color="#10B981" />
             </View>
             <View style={styles.createOptionContent}>
-              <Text style={styles.createOptionTitle}>Play TurnVerse</Text>
-              <Text style={styles.createOptionDescription}>Join language learning games</Text>
+              <Text style={styles.createOptionTitle}>Start TurnVerse</Text>
+              <Text style={styles.createOptionDescription}>Create interactive language games (up to 6 players)</Text>
             </View>
           </TouchableOpacity>
           </ScrollView>
