@@ -230,12 +230,21 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       .channel('chatlist-messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
         const m = payload.new;
-        setContacts(prev => prev.map(c => c.id === m.conversation_id ? {
-          ...c,
-          lastMessage: m.text || (m.media_url ? '[media]' : c.lastMessage),
-          lastMessageTime: timeAgo(m.created_at),
-          unreadCount: c.unreadCount + 1,
-        } : c));
+        setContacts(prev => {
+          const updated = prev.map(c => c.id === m.conversation_id ? {
+            ...c,
+            lastMessage: m.text || (m.media_url ? '[media]' : c.lastMessage),
+            lastMessageTime: timeAgo(m.created_at),
+            unreadCount: c.unreadCount + 1,
+          } : c);
+          // move the updated conversation to top
+          const idx = updated.findIndex(c => c.id === m.conversation_id);
+          if (idx > 0) {
+            const [item] = updated.splice(idx, 1);
+            updated.unshift(item);
+          }
+          return [...updated];
+        });
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, (payload: any) => {
         const r = payload.new;
