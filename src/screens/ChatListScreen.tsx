@@ -1,5 +1,5 @@
 // src/screens/ChatListScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { supabase } from '../supabaseClient';
+import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
@@ -25,6 +27,7 @@ interface ChatContact {
   name: string;
   username: string;
   avatar: string;
+  avatarUrl?: string;
   language: string;
   lastMessage: string;
   lastMessageTime: string;
@@ -133,11 +136,75 @@ const mockStories: Story[] = [
 ];
 
 const ChatListScreen: React.FC<any> = ({ navigation }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'Chats' | 'Groups' | 'Contacts' | 'Games'>('Chats');
   const [searchQuery, setSearchQuery] = useState('');
   const [showTranslations, setShowTranslations] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
+  const [contacts, setContacts] = useState<ChatContact[]>([]);
+  const [loadingChats, setLoadingChats] = useState(false);
+
+  // Helper
+  const timeAgo = (dateIso?: string) => {
+    if (!dateIso) return '';
+    const date = new Date(dateIso);
+    const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff/60)}m`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h`;
+    return `${Math.floor(diff/86400)}d`;
+  };
+
+  // Load conversations → map to contact cards without changing UI
+  useEffect(() => {
+    const load = async () => {
+      if (!user?.id) return;
+      try {
+        setLoadingChats(true);
+        const { data: convs, error } = await supabase.rpc('get_conversations_with_unread');
+        if (error) throw error;
+        const results: ChatContact[] = [];
+        for (const c of (convs || [])) {
+          // Fetch the other participant via RPC to avoid RLS recursion
+          let name = c.title || 'Conversation';
+          let username = 'user';
+          let language = '—';
+          let avatar = '👤';
+          let avatarUrl: string | undefined = undefined;
+          const { data: other } = await supabase.rpc('get_other_participant', { p_conversation_id: c.id });
+          if (other && other.length > 0) {
+            const p = other[0] as any;
+            name = p.full_name || name;
+            username = p.username || username;
+            language = p.primary_language || language;
+            avatarUrl = p.avatar_url || undefined;
+            if (!avatarUrl && name) {
+              avatar = name.trim().charAt(0).toUpperCase();
+            }
+          }
+          results.push({
+            id: c.id,
+            name,
+            username,
+            avatar: avatar,
+            avatarUrl,
+            language,
+            lastMessage: c.last_message_preview || '',
+            lastMessageTime: timeAgo(c.last_message_at as any),
+            unreadCount: (c.unread_count as number) || 0,
+            isOnline: false,
+          });
+        }
+        setContacts(results);
+      } catch (e) {
+        console.error('load chats failed', e);
+      } finally {
+        setLoadingChats(false);
+      }
+    };
+    load();
+  }, [user?.id]);
 
   const CreateModal = () => (
     <Modal
@@ -238,7 +305,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     <TouchableOpacity
       key={contact.id}
       style={styles.chatItem}
-      onPress={() => navigation.navigate('ChatDetail', { contact })}
+      onPress={() => navigation.navigate('ChatDetail', { contact, conversationId: contact.id })}
     >
       <View style={styles.chatItemLeft}>
         <View style={[styles.avatar, contact.isOnline && styles.onlineAvatar]}>
@@ -424,7 +491,8 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
   );
 
   const getTabContent = () => {
-    const filteredContacts = mockContacts.filter(contact =>
+    const sourceContacts = contacts.length > 0 ? contacts : mockContacts;
+    const filteredContacts = sourceContacts.filter(contact =>
       contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       contact.language.toLowerCase().includes(searchQuery.toLowerCase())
     );
