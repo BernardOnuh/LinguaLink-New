@@ -29,7 +29,7 @@ interface Message {
   text: string;
   translatedText?: string;
   sender: 'me' | 'them';
-  timestamp: string;
+  timestamp: string;  
   isVoiceMessage?: boolean;
   duration?: string;
   isTranslationVisible?: boolean;
