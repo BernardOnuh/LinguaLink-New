@@ -353,6 +353,39 @@ const CreateModal = () => {
 const MainTabs = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const { user } = useAuth();
+  const [unreadTotal, setUnreadTotal] = useState<number>(0);
+
+  // Compute unread badge count using RPC and keep it updated via realtime
+  useEffect(() => {
+    let mounted = true;
+    const fetchUnread = async () => {
+      if (!user?.id) return;
+      try {
+        const { data, error } = await supabase.rpc('get_conversations_with_unread');
+        if (!mounted) return;
+        if (error) return;
+        const total = (data || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
+        setUnreadTotal(total);
+      } catch {}
+    };
+    fetchUnread();
+    const channel = supabase
+      .channel('tabs-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
+        const m = payload.new;
+        if (m.sender_id !== user?.id) {
+          setUnreadTotal(prev => prev + 1);
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, (payload: any) => {
+        const r = payload.new;
+        if (r.user_id === user?.id) {
+          setUnreadTotal(prev => Math.max(0, prev - 1));
+        }
+      })
+      .subscribe();
+    return () => { mounted = false; channel.unsubscribe(); };
+  }, [user?.id]);
 
   return (
     <CreateModalContext.Provider value={{ showCreateModal, setShowCreateModal }}>
@@ -432,7 +465,7 @@ const MainTabs = () => {
           component={ChatListScreen}
           options={{
             tabBarLabel: 'Chat',
-            tabBarBadge: 3, // Show unread messages count
+            tabBarBadge: unreadTotal > 0 ? unreadTotal : undefined,
           }}
         />
         <Tab.Screen

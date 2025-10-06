@@ -248,9 +248,18 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, (payload: any) => {
         const r = payload.new;
-        // When current user reads, decrease unread in that conversation if we have it locally
+        // When current user reads, decrease unread for that conversation if we can map it
         if (r.user_id === user?.id) {
-          // We don't know which conversation from read alone; optimistic refresh on next focus is ok.
+          // We need message->conversation mapping; do a lightweight fetch for that message id
+          supabase.from('messages').select('conversation_id').eq('id', r.message_id).maybeSingle()
+            .then(({ data }) => {
+              if (data?.conversation_id) {
+                setContacts(prev => prev.map(c => c.id === data.conversation_id ? {
+                  ...c,
+                  unreadCount: Math.max(0, c.unreadCount - 1),
+                } : c));
+              }
+            });
         }
       })
       .subscribe();

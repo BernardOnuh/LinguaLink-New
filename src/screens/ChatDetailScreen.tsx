@@ -38,62 +38,6 @@ interface Message {
 // Update Props type to use the correct navigation types
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
-const mockMessages: Message[] = [
-  {
-    id: '1',
-    text: 'Ndewo! Kedu ka ị mere?',
-    translatedText: 'Hello! How are you doing?',
-    sender: 'them',
-    timestamp: '10:30 AM',
-  },
-  {
-    id: '2',
-    text: 'Hello! I\'m doing well, thank you. How about you?',
-    translatedText: 'Nke ahụ dị mma! Ka anyị gaa n\'ihu.',
-    sender: 'me',
-    timestamp: '10:32 AM',
-  },
-  {
-    id: '3',
-    text: 'Ọ dị mma! Achọrọ m ịmụta Yoruba. Ị nwere ike inyere m aka?',
-    translatedText: 'That\'s good! I want to learn Yoruba. Can you help me?',
-    sender: 'them',
-    timestamp: '10:35 AM',
-  },
-  {
-    id: '4',
-    text: 'Of course! I\'d be happy to help you learn Yoruba.',
-    translatedText: 'N\'ezie! Ọ ga-amasị m inyere gị aka ịmụta Yoruba.',
-    sender: 'me',
-    timestamp: '10:36 AM',
-    isVoiceMessage: true,
-    duration: '0:15',
-  },
-  {
-    id: '5',
-    text: 'Daalụ! Kedu mgbe anyị ga-amalite?',
-    translatedText: 'Thank you! When shall we start?',
-    sender: 'them',
-    timestamp: '10:38 AM',
-  },
-  {
-    id: '6',
-    text: 'We can start right now if you want. Let me teach you some basic Yoruba greetings.',
-    translatedText: 'Anyị nwere ike ịmalite ugbu a ma ọ bụrụ na ịchọrọ. Ka m kuziere gị ụfọdụ ekele Yoruba ndị bụ isi.',
-    sender: 'me',
-    timestamp: '10:40 AM',
-  },
-  {
-    id: '7',
-    text: 'That sounds perfect! I\'m excited to learn.',
-    translatedText: 'Nke ahụ dị mma! Ọ na-amasị m ịmụta.',
-    sender: 'me',
-    timestamp: '10:41 AM',
-    isVoiceMessage: true,
-    duration: '0:08',
-  },
-];
-
 const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { contact, conversationId } = route.params as any;
   const { user } = useAuth();
@@ -228,12 +172,26 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       .channel(`messages:${conversationId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload: any) => {
         const m = payload.new;
-        setMessages(prev => ([...prev, {
-          id: m.id,
-          text: m.media_url ? '[media]' : (m.text || ''),
-          sender: m.sender_id === user?.id ? 'me' : 'them',
-          timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }]));
+        const serverText = m.media_url ? '[media]' : (m.text || '');
+        setMessages(prev => {
+          const built = {
+            id: m.id,
+            text: serverText,
+            sender: m.sender_id === user?.id ? 'me' : 'them',
+            timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          } as Message;
+          // If it's our own server echo, try to replace the last optimistic temp message
+          if (m.sender_id === user?.id) {
+            const idx = [...prev].reverse().findIndex(msg => msg.id.startsWith('temp_') && msg.sender === 'me' && msg.text === serverText);
+            if (idx !== -1) {
+              const realIdx = prev.length - 1 - idx;
+              const arr = [...prev];
+              arr[realIdx] = built;
+              return arr;
+            }
+          }
+          return [...prev, built];
+        });
         latestMessageIdRef.current = m.id;
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
       })
@@ -246,11 +204,8 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     const markRead = async () => {
       if (!conversationId || !user?.id || !latestMessageIdRef.current) return;
       try {
-        await supabase.from('message_reads').upsert({
-          message_id: latestMessageIdRef.current,
-          user_id: user.id,
-          read_at: new Date().toISOString(),
-        });
+        // Mark all unread in this conversation as read for this user
+        await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
       } catch (e) {
         // ignore
       }
