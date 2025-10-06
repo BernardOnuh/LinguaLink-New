@@ -19,6 +19,8 @@ import { Ionicons } from '@expo/vector-icons';
 // Update these imports to use the correct types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App'; // Adjust path as needed
+import { supabase } from '../supabaseClient';
+import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
@@ -93,8 +95,9 @@ const mockMessages: Message[] = [
 ];
 
 const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { contact } = route.params;
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const { contact, conversationId } = route.params as any;
+  const { user } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [showTranslations, setShowTranslations] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
@@ -125,13 +128,13 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       ),
       headerRight: () => (
         <View style={styles.headerActions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerButton}
             onPress={() => navigation.navigate('VoiceCall', { contact })}
           >
             <Ionicons name="call" size={24} color="#FF8A00" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerButton}
             onPress={() => navigation.navigate('VideoCall', { contact })}
           >
@@ -149,6 +152,53 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       headerTintColor: '#FF8A00',
     });
   }, [navigation, contact]);
+
+  // Load messages from DB
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!conversationId || !user?.id) return;
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, text, sender_id, created_at, media_url')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+      if (!mounted) return;
+      if (error) {
+        console.error('load messages error', error);
+        return;
+      }
+      const mapped: Message[] = (data || []).map((m: any) => ({
+        id: m.id,
+        text: m.media_url ? '[media]' : (m.text || ''),
+        sender: m.sender_id === user.id ? 'me' : 'them',
+        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }));
+      setMessages(mapped);
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 50);
+    };
+    load();
+    return () => { mounted = false; };
+  }, [conversationId, user?.id]);
+
+  // Subscribe to realtime inserts
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`messages:${conversationId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload: any) => {
+        const m = payload.new;
+        setMessages(prev => ([...prev, {
+          id: m.id,
+          text: m.media_url ? '[media]' : (m.text || ''),
+          sender: m.sender_id === user?.id ? 'me' : 'them',
+          timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]));
+        setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
+      })
+      .subscribe();
+    return () => { channel.unsubscribe(); };
+  }, [conversationId, user?.id]);
 
   useEffect(() => {
     // Animate typing dots
@@ -201,30 +251,30 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [isTyping, dot1Anim, dot2Anim, dot3Anim]);
 
-  const sendMessage = () => {
-    if (newMessage.trim()) {
-      const message: Message = {
-        id: Date.now().toString(),
-        text: newMessage,
-        translatedText: `[Auto-translated to ${contact.language}: ${newMessage}]`,
-        sender: 'me',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      
-      setMessages([...messages, message]);
-      setNewMessage('');
-      setIsTyping(true); // Simulate them typing back
-      
-      // Scroll to bottom
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !conversationId) return;
+    const optimistic: Message = {
+      id: `temp_${Date.now()}`,
+      text: newMessage,
+      sender: 'me',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages(prev => [...prev, optimistic]);
+    const toSend = newMessage;
+    setNewMessage('');
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
+    try {
+      const { error } = await supabase.rpc('send_message', { p_conversation_id: conversationId, p_text: toSend });
+      if (error) throw error;
+    } catch (e) {
+      console.error('send failed', e);
+      // optional: mark failed
     }
   };
 
   const toggleTranslation = (messageId: string) => {
-    setMessages(messages.map(msg => 
-      msg.id === messageId 
+    setMessages(messages.map(msg =>
+      msg.id === messageId
         ? { ...msg, isTranslationVisible: !msg.isTranslationVisible }
         : msg
     ));
@@ -233,7 +283,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const startVoiceRecording = () => {
     setIsRecording(true);
     Alert.alert(
-      'Voice Recording', 
+      'Voice Recording',
       'Recording started... Speak naturally in your language and it will be translated!',
       [
         {
@@ -246,7 +296,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const stopVoiceRecording = () => {
     setIsRecording(false);
-    
+
     const voiceMessage: Message = {
       id: Date.now().toString(),
       text: '[Voice message in your language]',
@@ -256,10 +306,10 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       isVoiceMessage: true,
       duration: '0:05',
     };
-    
+
     setMessages([...messages, voiceMessage]);
     setIsTyping(true); // Simulate response
-    
+
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
@@ -274,13 +324,13 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const renderMessage = (message: Message) => {
     const isMe = message.sender === 'me';
-    
+
     return (
       <View key={message.id} style={[
         styles.messageContainer,
         isMe ? styles.myMessageContainer : styles.theirMessageContainer
       ]}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
             styles.messageBubble,
             isMe ? styles.myMessageBubble : styles.theirMessageBubble
@@ -289,14 +339,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           activeOpacity={0.8}
         >
           {message.isVoiceMessage ? (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.voiceMessageContent}
               onPress={() => playVoiceMessage(message.id)}
             >
-              <Ionicons 
-                name="play-circle" 
-                size={32} 
-                color={isMe ? "#FFFFFF" : "#FF8A00"} 
+              <Ionicons
+                name="play-circle"
+                size={32}
+                color={isMe ? "#FFFFFF" : "#FF8A00"}
               />
               <View style={styles.voiceMessageInfo}>
                 <Text style={[
@@ -314,15 +364,15 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
               <View style={styles.waveformContainer}>
                 {[1, 2, 3, 4, 5].map((bar) => (
-                  <View 
+                  <View
                     key={bar}
                     style={[
                       styles.waveformBar,
-                      { 
+                      {
                         height: Math.random() * 20 + 10,
                         backgroundColor: isMe ? "#FFFFFF" : "#FF8A00"
                       }
-                    ]} 
+                    ]}
                   />
                 ))}
               </View>
@@ -335,7 +385,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               {message.text}
             </Text>
           )}
-          
+
           {message.translatedText && (showTranslations || message.isTranslationVisible) && (
             <View style={styles.translationContainer}>
               <Text style={[
@@ -346,7 +396,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               </Text>
             </View>
           )}
-          
+
           <Text style={[
             styles.messageTimestamp,
             isMe ? styles.myTimestamp : styles.theirTimestamp
@@ -360,7 +410,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const renderTypingIndicator = () => {
     if (!isTyping) return null;
-    
+
     return (
       <View style={styles.typingContainer}>
         <View style={styles.typingBubble}>
@@ -378,23 +428,23 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Translation Toggle */}
       <View style={styles.translationToggle}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.translationButton}
           onPress={() => setShowTranslations(!showTranslations)}
         >
-          <Ionicons 
-            name={showTranslations ? "language" : "language-outline"} 
-            size={16} 
-            color="#10B981" 
+          <Ionicons
+            name={showTranslations ? "language" : "language-outline"}
+            size={16}
+            color="#10B981"
           />
           <Text style={styles.translationButtonText}>
             {showTranslations ? 'Hide Translations' : 'Show Translations'}
           </Text>
         </TouchableOpacity>
-        
+
         <View style={styles.languageIndicator}>
           <Text style={styles.languageIndicatorText}>
             Your Language ↔ {contact.language}
@@ -403,7 +453,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       </View>
 
       {/* Messages */}
-      <ScrollView 
+      <ScrollView
         ref={scrollViewRef}
         style={styles.messagesContainer}
         showsVerticalScrollIndicator={false}
@@ -414,7 +464,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       </ScrollView>
 
       {/* Input Area */}
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.inputContainer}
       >
@@ -422,7 +472,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <TouchableOpacity style={styles.attachButton}>
             <Ionicons name="add" size={24} color="#999" />
           </TouchableOpacity>
-          
+
           <View style={styles.textInputContainer}>
             <TextInput
               style={styles.textInput}
@@ -439,26 +489,26 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               </Text>
             )}
           </View>
-          
+
           {newMessage.trim() ? (
             <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
               <Ionicons name="send" size={20} color="#FFFFFF" />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.voiceButton, isRecording && styles.recordingButton]}
               onPressIn={startVoiceRecording}
               onPressOut={stopVoiceRecording}
             >
-              <Ionicons 
-                name={isRecording ? "stop" : "mic"} 
-                size={20} 
-                color="#FFFFFF" 
+              <Ionicons
+                name={isRecording ? "stop" : "mic"}
+                size={20}
+                color="#FFFFFF"
               />
             </TouchableOpacity>
           )}
         </View>
-        
+
         <View style={styles.inputHint}>
           <Ionicons name="information-circle" size={12} color="#10B981" />
           <Text style={styles.inputHintText}>

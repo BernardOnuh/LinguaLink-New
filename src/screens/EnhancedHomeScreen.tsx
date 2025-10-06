@@ -49,14 +49,14 @@ const formatCount = (count: number): string => {
   return String(count);
 };
 
-// Helper to extract original prompt from nested remix chains
+// Helper to extract original prompt
 const extractOriginalPrompt = (phrase: string) => {
-  // If the phrase contains nested remix text, extract the original
+  // If the phrase contains nested chain text, extract the original
   if (phrase.includes('"Create your own version of "') || phrase.includes('"Respond to "')) {
     // Find the innermost quoted text (the original prompt)
     const matches = phrase.match(/"([^"]*)"(?: by [^"]*)?$/);
     if (matches && matches[1]) {
-      // Check if this is the actual original (not another nested remix)
+      // Check if this is the actual original (not another nested layer)
       const extracted = matches[1];
       if (!extracted.includes('"Create your own version of "') && !extracted.includes('"Respond to "')) {
         return extracted;
@@ -1108,25 +1108,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 style={styles.optionItem}
                 onPress={() => {
                   setShowMoreOptions(null);
-                  navigation.navigate('RecordVoice', {
-                    isRemix: true,
-                    originalClip: {
-                      id: post.id,
-                      phrase: post.content.phrase,
-                      user: post.user.name,
-                      language: post.user.language
-                    }
-                  });
-                }}
-              >
-                <Ionicons name="repeat" size={20} color="#8B5CF6" />
-                <Text style={styles.optionText}>Remix</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.optionItem}
-                onPress={() => {
-                  setShowMoreOptions(null);
                   navigation.navigate('Validation', {
                     clipId: post.id,
                     language: post.user.language
@@ -1338,7 +1319,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       </View>
 
       {/* Likes summary */}
-      {(post.engagement.likes > 0 || (post.engagement.duets ?? 0) > 0 || (post.engagement.remixes ?? 0) > 0 || post.engagement.validations > 0) && (
+      {(post.engagement.likes > 0 || (post.engagement.duets ?? 0) > 0 || post.engagement.validations > 0) && (
         <View style={styles.likesSummaryRow}>
           {post.engagement.likes > 0 && (
             <View style={styles.summaryItem}>
@@ -1350,12 +1331,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             <View style={styles.summaryItem}>
               <Ionicons name="people" size={14} color="#374151" />
               <Text style={styles.likesSummaryText}>{formatCount(post.engagement.duets ?? 0)}</Text>
-            </View>
-          )}
-          {(post.engagement.remixes ?? 0) > 0 && (
-            <View style={styles.summaryItem}>
-              <Ionicons name="repeat" size={14} color="#374151" />
-              <Text style={styles.likesSummaryText}>{formatCount(post.engagement.remixes ?? 0)}</Text>
             </View>
           )}
           {post.engagement.validations > 0 && (
@@ -1404,26 +1379,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
               color="#6B7280"
             />
             <Text style={styles.actionText}>Duet</Text>
-          </TouchableOpacity>
-        )}
-        {(post.type === 'voice' || post.type === 'video') && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => {
-              navigation.navigate('RecordVoice', {
-                isRemix: true,
-                originalClip: {
-                  id: post.id,
-                  phrase: post.content.phrase,
-                  user: post.user.name,
-                  language: post.user.language,
-                },
-              });
-            }}
-            accessibilityLabel="Remix"
-          >
-            <Ionicons name="repeat" size={20} color="#6B7280" />
-            <Text style={styles.actionText}>Remix</Text>
           </TouchableOpacity>
         )}
         {(post.type === 'voice' || post.type === 'video') && (

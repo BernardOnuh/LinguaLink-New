@@ -52,7 +52,6 @@ export type RootStackParamList = {
   SignIn: undefined;
   MainTabs: undefined;
   RecordVoice: {
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;
@@ -62,7 +61,6 @@ export type RootStackParamList = {
     };
   } | undefined;
   RecordVideo: {
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;

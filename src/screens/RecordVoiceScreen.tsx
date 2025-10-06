@@ -39,7 +39,6 @@ interface Props {
   route?: {
     params?: {
       mode?: 'record' | 'upload';
-      isRemix?: boolean;
       isDuet?: boolean;
       originalClip?: {
         id: string;
@@ -86,7 +85,6 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const pulseAnimation = useRef(new Animated.Value(1)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  const isRemix = route?.params?.isRemix || false;
   const isDuet = route?.params?.isDuet || false;
   const originalClip = route?.params?.originalClip;
   const mode = route?.params?.mode || 'record';
@@ -106,7 +104,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
   // Default to editing prompt for regular record/upload so users can type theirs
   useEffect(() => {
-    if (!isRemix && !isDuet) {
+    if (!isDuet) {
       setIsEditingPrompt(true);
     }
   }, []);
@@ -306,9 +304,9 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           validations_count: 0,
           is_validated: false,
           daily_prompt_id: selectedPrompt ? selectedPrompt.id : null,
-          // Duet/Remix tracking
-          original_clip_id: isDuet || isRemix ? originalClip?.id : null,
-          clip_type: isDuet ? 'duet' : isRemix ? 'remix' : 'original'
+          // Duet tracking
+          original_clip_id: isDuet ? originalClip?.id : null,
+          clip_type: isDuet ? 'duet' : 'original'
         })
         .select()
         .single();
@@ -354,7 +352,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         }
       }
 
-      const clipType = isRemix ? 'remix' : isDuet ? 'duet' : 'original clip';
+      const clipType = isDuet ? 'duet' : 'original clip';
       Alert.alert(
         'Success!',
         `Your ${clipType} has been saved to your library! It will be available for validation by native speakers of ${selectedLanguage.name}${selectedLanguage.dialect ? ` (${selectedLanguage.dialect})` : ''}.`,
@@ -423,7 +421,6 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const getScreenTitle = () => {
-    if (isRemix) return 'Create Remix';
     if (isDuet) return 'Record Duet';
     return mode === 'upload' ? 'Upload Audio' : 'Record Voice';
   };
@@ -431,9 +428,6 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const getPromptText = () => {
     if (customPrompt.trim()) return customPrompt.trim();
     if (selectedPrompt) return selectedPrompt.prompt_text;
-    if (isRemix && originalClip) {
-      return `Create your own version of "${originalClip.phrase}" or say it in your dialect`;
-    }
     if (isDuet && originalClip) {
       return `Respond to "${originalClip.phrase}"`;
     }
@@ -498,18 +492,12 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Original Clip Reference (for Remix/Duet) */}
-        {(isRemix || isDuet) && originalClip && (
+        {/* Original Clip Reference (for Duet) */}
+        {isDuet && originalClip && (
           <View style={styles.originalClipCard}>
             <View style={styles.originalClipHeader}>
-              <Ionicons
-                name={isRemix ? "repeat" : "people"}
-                size={16}
-                color={isRemix ? "#8B5CF6" : "#10B981"}
-              />
-              <Text style={styles.originalClipType}>
-                {isRemix ? 'Remixing' : 'Responding to'}
-              </Text>
+              <Ionicons name="people" size={16} color="#10B981" />
+              <Text style={styles.originalClipType}>Responding to</Text>
             </View>
             <Text style={styles.originalClipPhrase}>"{originalClip.phrase}"</Text>
             <Text style={styles.originalClipMeta}>
@@ -537,7 +525,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         </TouchableOpacity>
 
         {/* Daily Prompts Section - Only show for regular record/upload */}
-        {!isRemix && !isDuet && (
+        {!isDuet && (
           <View style={styles.dailyPromptsSection}>
             <Text style={styles.dailyPromptsTitle}>Today's Daily Prompts</Text>
             <Text style={styles.dailyPromptsSubtitle}>
@@ -583,12 +571,12 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Prompt Card - only after all daily prompts are used, or for remix/duet */}
-        {(isRemix || isDuet || (dailyPrompts.length > 0 && dailyPrompts.every(p => p.is_used))) && (
+        {/* Prompt Card - only after all daily prompts are used, or for duet */}
+        {(isDuet || (dailyPrompts.length > 0 && dailyPrompts.every(p => p.is_used))) && (
         <View style={styles.promptCard}>
           <View style={styles.promptHeader}>
             <Text style={styles.promptTitle}>
-              {isRemix ? 'Remix Prompt' : isDuet ? 'Duet Prompt' : 'Your Prompt'}
+              {isDuet ? 'Duet Prompt' : 'Your Prompt'}
             </Text>
             <View style={styles.promptActions}>
               {!isEditingPrompt && customPrompt.trim() && (
@@ -610,9 +598,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
                   } else {
                     // Start editing - initialize with current prompt
                     const currentPrompt = customPrompt.trim() ||
-                      (isRemix && originalClip ? `Create your own version of "${originalClip.phrase}" or say it in your dialect` :
-                       isDuet && originalClip ? `Respond to "${originalClip.phrase}"` :
-                       '');
+                      (isDuet && originalClip ? `Respond to "${originalClip.phrase}"` : '');
                     setCustomPrompt(currentPrompt);
                     setIsEditingPrompt(true);
                   }
@@ -644,7 +630,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           )}
 
           <Text style={styles.promptSubtext}>
-            {isRemix || isDuet ? 'Express it in your own way!' : 'Write a short phrase that matches your audio'}
+            {isDuet ? 'Express it in your own way!' : 'Write a short phrase that matches your audio'}
           </Text>
         </View>
         )}
@@ -751,9 +737,9 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
               ) : (
                 <Ionicons name="checkmark" size={20} color="#FFFFFF" />
               )}
-              <Text style={styles.saveButtonText}>
-                {isSaving ? (uploadProgress || 'Saving...') : `Save ${isRemix ? 'Remix' : isDuet ? 'Duet' : 'Clip'}`}
-              </Text>
+      <Text style={styles.saveButtonText}>
+        {isSaving ? (uploadProgress || 'Saving...') : `Save ${isDuet ? 'Duet' : 'Clip'}`}
+      </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -762,15 +748,9 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         {!isRecording && !hasRecorded && selectedLanguage && (
           <View style={styles.tipsContainer}>
             <Text style={styles.tipsTitle}>
-              {isRemix ? 'Remix Tips:' : isDuet ? 'Duet Tips:' : 'Recording Tips:'}
+              {isDuet ? 'Duet Tips:' : 'Recording Tips:'}
             </Text>
-            {isRemix ? (
-              <>
-                <Text style={styles.tipText}>• Put your own spin on the phrase</Text>
-                <Text style={styles.tipText}>• Use your regional dialect</Text>
-                <Text style={styles.tipText}>• Add cultural context or meaning</Text>
-              </>
-            ) : isDuet ? (
+            {isDuet ? (
               <>
                 <Text style={styles.tipText}>• Respond naturally to the original</Text>
                 <Text style={styles.tipText}>• Share your perspective or translation</Text>

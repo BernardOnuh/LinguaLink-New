@@ -43,7 +43,7 @@ interface VoiceClip {
   validations: number;
   duets: number;
   timeAgo: string;
-  clip_type?: 'original' | 'duet' | 'remix';
+  clip_type?: 'original' | 'duet';
   original_clip_id?: string;
 }
 
@@ -485,19 +485,47 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity
-            onPress={toggleFollow}
-            disabled={followLoading}
-            style={styles.followButton}
-          >
-            {followLoading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.followButtonText}>
-                {isFollowing ? 'Following' : 'Follow'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={async () => {
+                if (!authUser?.id || !targetUserId) return;
+                try {
+                  const { data, error } = await supabase.rpc('create_or_get_dm', { target: targetUserId });
+                  if (error) throw error;
+                  navigation.navigate('ChatDetail', {
+                    contact: {
+                      id: targetUserId,
+                      name: userProfile?.full_name || 'User',
+                      username: userProfile?.username || 'user',
+                      avatar: (userProfile?.full_name || 'U').trim().charAt(0).toUpperCase(),
+                      language: userProfile?.primary_language || '—',
+                      isOnline: false,
+                    },
+                    // @ts-ignore pass along conversation id for ChatDetail
+                    conversationId: data,
+                  });
+                } catch (e) {
+                  Alert.alert('Error', 'Failed to start chat');
+                }
+              }}
+              style={[styles.followButton, { backgroundColor: 'rgba(255, 138, 0, 0.2)', borderColor: '#FF8A00' }]}
+            >
+              <Text style={[styles.followButtonText, { color: '#FFFFFF' }]}>Message</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={toggleFollow}
+              disabled={followLoading}
+              style={styles.followButton}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.followButtonText}>
+                  {isFollowing ? 'Following' : 'Follow'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Profile Info */}
