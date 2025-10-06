@@ -1108,25 +1108,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 style={styles.optionItem}
                 onPress={() => {
                   setShowMoreOptions(null);
-                  navigation.navigate('RecordVoice', {
-                    isRemix: true,
-                    originalClip: {
-                      id: post.id,
-                      phrase: post.content.phrase,
-                      user: post.user.name,
-                      language: post.user.language
-                    }
-                  });
-                }}
-              >
-                <Ionicons name="repeat" size={20} color="#8B5CF6" />
-                <Text style={styles.optionText}>Remix</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.optionItem}
-                onPress={() => {
-                  setShowMoreOptions(null);
                   navigation.navigate('Validation', {
                     clipId: post.id,
                     language: post.user.language

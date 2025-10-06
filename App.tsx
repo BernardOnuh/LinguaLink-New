@@ -93,7 +93,6 @@ export type RootStackParamList = {
   MainTabs: undefined;
   RecordVoice: {
     mode?: 'record' | 'upload';
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;
@@ -104,7 +103,6 @@ export type RootStackParamList = {
   } | undefined;
   RecordVideo: {
     mode?: 'record' | 'upload';
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;

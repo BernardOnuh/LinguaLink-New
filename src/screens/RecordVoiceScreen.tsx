@@ -352,7 +352,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         }
       }
 
-      const clipType = isRemix ? 'remix' : isDuet ? 'duet' : 'original clip';
+      const clipType = isDuet ? 'duet' : 'original clip';
       Alert.alert(
         'Success!',
         `Your ${clipType} has been saved to your library! It will be available for validation by native speakers of ${selectedLanguage.name}${selectedLanguage.dialect ? ` (${selectedLanguage.dialect})` : ''}.`,
@@ -630,7 +630,7 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
           )}
 
           <Text style={styles.promptSubtext}>
-            {isRemix || isDuet ? 'Express it in your own way!' : 'Write a short phrase that matches your audio'}
+            {isDuet ? 'Express it in your own way!' : 'Write a short phrase that matches your audio'}
           </Text>
         </View>
         )}

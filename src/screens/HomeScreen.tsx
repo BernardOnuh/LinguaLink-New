@@ -257,7 +257,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleRemix = (clip: VoiceClip) => {
     navigation.navigate('RecordVoice', {
-      isRemix: true,
+
       originalClip: {
         id: clip.id,
         phrase: clip.phrase,
