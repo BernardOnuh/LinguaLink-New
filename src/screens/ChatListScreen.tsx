@@ -1,5 +1,5 @@
 // src/screens/ChatListScreen.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ interface ChatContact {
   username: string;
   avatar: string;
   avatarUrl?: string;
+  otherUserId?: string;
   language: string;
   lastMessage: string;
   lastMessageTime: string;
@@ -144,6 +145,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
   const [showStoryModal, setShowStoryModal] = useState(false);
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Helper
   const timeAgo = (dateIso?: string) => {
@@ -156,16 +158,14 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     return `${Math.floor(diff/86400)}d`;
   };
 
-  // Load conversations → map to contact cards without changing UI
-  useEffect(() => {
-    const load = async () => {
-      if (!user?.id) return;
-      try {
-        setLoadingChats(true);
-        const { data: convs, error } = await supabase.rpc('get_conversations_with_unread');
-        if (error) throw error;
-        const results: ChatContact[] = [];
-        for (const c of (convs || [])) {
+  const fetchChats = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      if (!refreshing) setLoadingChats(true);
+      const { data: convs, error } = await supabase.rpc('get_conversations_with_unread');
+      if (error) throw error;
+      const results: ChatContact[] = [];
+      for (const c of (convs || [])) {
           // Fetch the other participant via RPC to avoid RLS recursion
           let name = c.title || 'Conversation';
           let username = 'user';
@@ -182,6 +182,23 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             if (!avatarUrl && name) {
               avatar = name.trim().charAt(0).toUpperCase();
             }
+            // store other user's id for presence in detail screen
+            (p as any)._uid = p.user_id;
+            const otherUserId = p.user_id as string | undefined;
+            results.push({
+              id: c.id,
+              name,
+              username,
+              avatar: avatar,
+              avatarUrl,
+              otherUserId,
+              language,
+              lastMessage: c.last_message_preview || '',
+              lastMessageTime: timeAgo(c.last_message_at as any),
+              unreadCount: (c.unread_count as number) || 0,
+              isOnline: false,
+            });
+            continue;
           }
           results.push({
             id: c.id,
@@ -195,16 +212,41 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             unreadCount: (c.unread_count as number) || 0,
             isOnline: false,
           });
-        }
-        setContacts(results);
-      } catch (e) {
-        console.error('load chats failed', e);
-      } finally {
-        setLoadingChats(false);
       }
-    };
-    load();
-  }, [user?.id]);
+      setContacts(results);
+    } catch (e) {
+      console.error('load chats failed', e);
+    } finally {
+      setLoadingChats(false);
+      if (refreshing) setRefreshing(false);
+    }
+  }, [user?.id, refreshing]);
+
+  // Load conversations → map to contact cards without changing UI
+  useEffect(() => {
+    fetchChats();
+    // Realtime: update last message & unread on new messages
+    const channel = supabase
+      .channel('chatlist-messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
+        const m = payload.new;
+        setContacts(prev => prev.map(c => c.id === m.conversation_id ? {
+          ...c,
+          lastMessage: m.text || (m.media_url ? '[media]' : c.lastMessage),
+          lastMessageTime: timeAgo(m.created_at),
+          unreadCount: c.unreadCount + 1,
+        } : c));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, (payload: any) => {
+        const r = payload.new;
+        // When current user reads, decrease unread in that conversation if we have it locally
+        if (r.user_id === user?.id) {
+          // We don't know which conversation from read alone; optimistic refresh on next focus is ok.
+        }
+      })
+      .subscribe();
+    return () => { channel.unsubscribe(); };
+  }, [user?.id, fetchChats]);
 
   const CreateModal = () => (
     <Modal
@@ -491,8 +533,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
   );
 
   const getTabContent = () => {
-    const sourceContacts = contacts.length > 0 ? contacts : mockContacts;
-    const filteredContacts = sourceContacts.filter(contact =>
+    const filteredContacts = contacts.filter(contact =>
       contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       contact.language.toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -504,6 +545,22 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
 
     switch (activeTab) {
       case 'Chats':
+        if (loadingChats) {
+          return (
+            <View style={{ padding: width * 0.05 }}>
+              <View style={{ height: 16, width: '40%', backgroundColor: '#F3F4F6', borderRadius: 8, marginBottom: 12 }} />
+              {[...Array(4)].map((_, i) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                  <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: '#F3F4F6', marginRight: 12 }} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ height: 14, width: '50%', backgroundColor: '#F3F4F6', borderRadius: 7, marginBottom: 8 }} />
+                    <View style={{ height: 12, width: '80%', backgroundColor: '#F3F4F6', borderRadius: 6 }} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          );
+        }
         return filteredContacts.map(renderChatItem);
       case 'Groups':
         return filteredGroups.map(renderGroupItem);
@@ -630,9 +687,19 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       <ScrollView
         style={styles.contentList}
         showsVerticalScrollIndicator={false}
+        refreshControl={undefined}
       >
         {getTabContent()}
       </ScrollView>
+
+      {/* Invisible FlatList just to leverage native pull-to-refresh behavior */}
+      <FlatList
+        data={[]}
+        renderItem={() => null}
+        refreshing={refreshing}
+        onRefresh={() => { setRefreshing(true); fetchChats(); }}
+        style={{ height: 0, opacity: 0 }}
+      />
 
       <CreateModal />
     </SafeAreaView>

@@ -103,6 +103,10 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const latestMessageIdRef = useRef<string | null>(null);
+  const typingChannelRef = useRef<any>(null);
+  const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const typingIdleRef = useRef<NodeJS.Timeout | null>(null);
 
   // Animation values for typing dots
   const dot1Anim = useRef(new Animated.Value(0.3)).current;
@@ -153,6 +157,41 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   }, [navigation, contact]);
 
+  // Presence: show online status for the other user
+  useEffect(() => {
+    // Expect other user id passed via contact.otherUserId or from route params
+    const otherUserId = (route.params as any)?.contact?.otherUserId as string | undefined;
+    if (!otherUserId) return;
+    const ch = supabase.channel('users_presence', { config: { presence: { key: user?.id || 'me' }}});
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState();
+      const online = Object.values(state || {}).some((arr: any) => Array.isArray(arr) && arr.some((m: any) => m.userId === otherUserId));
+      contact.isOnline = online;
+      navigation.setOptions({
+        headerTitle: () => (
+          <View style={styles.headerTitleContainer}>
+            <View style={styles.headerAvatar}>
+              <Text style={styles.headerAvatarText}>{contact.avatar}</Text>
+              {online && <View style={styles.headerOnlineIndicator} />}
+            </View>
+            <View>
+              <Text style={styles.headerName}>{contact.name}</Text>
+              <Text style={styles.headerStatus}>
+                {online ? `Online` : 'Offline'}
+              </Text>
+            </View>
+          </View>
+        ),
+      });
+    });
+    ch.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await ch.track({ userId: user?.id });
+      }
+    });
+    return () => { ch.unsubscribe(); };
+  }, [navigation, user?.id, route.params]);
+
   // Load messages from DB
   useEffect(() => {
     let mounted = true;
@@ -175,6 +214,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }));
       setMessages(mapped);
+      if (mapped.length > 0) latestMessageIdRef.current = mapped[mapped.length - 1].id;
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 50);
     };
     load();
@@ -194,11 +234,29 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           sender: m.sender_id === user?.id ? 'me' : 'them',
           timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }]));
+        latestMessageIdRef.current = m.id;
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
       })
       .subscribe();
     return () => { channel.unsubscribe(); };
   }, [conversationId, user?.id]);
+
+  // Mark messages as read when opening and when new messages arrive
+  useEffect(() => {
+    const markRead = async () => {
+      if (!conversationId || !user?.id || !latestMessageIdRef.current) return;
+      try {
+        await supabase.from('message_reads').upsert({
+          message_id: latestMessageIdRef.current,
+          user_id: user.id,
+          read_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // ignore
+      }
+    };
+    markRead();
+  }, [messages.length, conversationId, user?.id]);
 
   useEffect(() => {
     // Animate typing dots
@@ -230,23 +288,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       };
 
       animateTypingDots();
-
-      const timer = setTimeout(() => {
-        setIsTyping(false);
-        // Simulate receiving a message
-        const response: Message = {
-          id: Date.now().toString(),
-          text: 'Nke ahụ dị mma! Ka anyị gaa n\'ihu.',
-          translatedText: 'That sounds great! Let\'s continue.',
-          sender: 'them',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages(prev => [...prev, response]);
-        setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      }, 3000);
-
+      const timer = setTimeout(() => setIsTyping(false), 4000);
       return () => clearTimeout(timer);
     }
   }, [isTyping, dot1Anim, dot2Anim, dot3Anim]);
@@ -270,6 +312,40 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       console.error('send failed', e);
       // optional: mark failed
     }
+    // stop typing status after send
+    if (typingChannelRef.current) {
+      typingChannelRef.current.send({ type: 'broadcast', event: 'typing', payload: { userId: user?.id, isTyping: false } });
+    }
+  };
+
+  // Typing presence/broadcast
+  useEffect(() => {
+    if (!conversationId) return;
+    const ch = supabase.channel(`typing:${conversationId}`)
+      .on('broadcast', { event: 'typing' }, (payload: any) => {
+        const { userId, isTyping: typing } = payload.payload || {};
+        if (!userId || userId === user?.id) return;
+        if (typing) {
+          setIsTyping(true);
+        } else {
+          setIsTyping(false);
+        }
+      })
+      .subscribe();
+    typingChannelRef.current = ch;
+    return () => { ch.unsubscribe(); typingChannelRef.current = null; };
+  }, [conversationId, user?.id]);
+
+  const notifyTyping = (text: string) => {
+    if (!typingChannelRef.current) return;
+    if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
+    typingDebounceRef.current = setTimeout(() => {
+      typingChannelRef.current.send({ type: 'broadcast', event: 'typing', payload: { userId: user?.id, isTyping: true } });
+    }, 200);
+    if (typingIdleRef.current) clearTimeout(typingIdleRef.current);
+    typingIdleRef.current = setTimeout(() => {
+      typingChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { userId: user?.id, isTyping: false } });
+    }, 3000);
   };
 
   const toggleTranslation = (messageId: string) => {
@@ -478,7 +554,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               style={styles.textInput}
               placeholder={`Type in your language... (auto-translates to ${contact.language})`}
               value={newMessage}
-              onChangeText={setNewMessage}
+              onChangeText={(t) => { setNewMessage(t); notifyTyping(t); }}
               multiline
               maxLength={500}
               placeholderTextColor="#999"
