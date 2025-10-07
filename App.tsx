@@ -8,6 +8,8 @@ import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator, Scr
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 // import { deepLinkHandler } from './src/utils/deepLinking'; // No longer used; rely on Navigation linking prop
 import { supabase } from './src/supabaseClient';
 
@@ -45,6 +47,7 @@ import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
 import InterestSelectionScreen from './src/screens/InterestSelectionScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 
 // Import navigation types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -156,6 +159,7 @@ export type RootStackParamList = {
     story: Story;
   };
   ContactDiscovery: undefined;
+  Notifications: undefined;
 };
 
 export type TabParamList = {
@@ -597,6 +601,16 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
           }}
         />
 
+        {/* Notifications Screen */}
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{
+            animation: 'slide_from_right',
+            headerShown: false,
+          }}
+        />
+
         {/* Rewards Screen */}
         <Stack.Screen
           name="Rewards"
@@ -802,6 +816,46 @@ const AuthGate = () => {
       checkOnboarding();
     }
   }, [session, loading, checkOnboarding]);
+
+  // Register push notifications device token after login
+  React.useEffect(() => {
+    const registerPush = async () => {
+      try {
+        if (!session?.user?.id) return;
+        // Configure foreground behavior (optional)
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+            // SDK 53+ NotificationBehavior fields
+            shouldShowBanner: true,
+            shouldShowList: true,
+          }),
+        });
+
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== 'granted') return;
+
+        // Expo push token
+        const projectId = (await Notifications.getExpoPushTokenAsync()).data;
+        const platform = Device.osName || 'unknown';
+
+        // Persist to backend
+        await supabase.rpc('register_device', { p_token: projectId, p_platform: platform });
+      } catch (e) {
+        // no-op
+      }
+    };
+    if (session && !loading) {
+      registerPush();
+    }
+  }, [session, loading]);
 
   // Listen for changes to the profiles table to detect when onboarding is completed
   React.useEffect(() => {

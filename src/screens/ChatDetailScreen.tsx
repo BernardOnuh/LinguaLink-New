@@ -263,6 +263,24 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       const { error } = await supabase.rpc('send_message', { p_conversation_id: conversationId, p_text: toSend });
       if (error) throw error;
+
+      // After successful send, deliver push notifications to other members
+      try {
+        const { data: recipients, error: recErr } = await supabase.rpc('get_conversation_recipient_ids', { p_conversation_id: conversationId });
+        if (!recErr && Array.isArray(recipients) && recipients.length > 0) {
+          const preview = toSend.length > 80 ? `${toSend.slice(0, 77)}...` : toSend;
+          await supabase.functions.invoke('notify', {
+            body: {
+              user_ids: recipients,
+              title: contact.name || 'New message',
+              body: preview || '[media] message',
+              data: { conversation_id: conversationId },
+            },
+          });
+        }
+      } catch (e) {
+        // Ignored: push delivery best-effort
+      }
     } catch (e) {
       console.error('send failed', e);
       // optional: mark failed
