@@ -219,6 +219,11 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           iconColor="#6B7280"
         >
           <SettingsItem
+            title="Notifications"
+            subtitle="View recent notifications"
+            onPress={() => navigation.navigate('Notifications' as any)}
+          />
+          <SettingsItem
             title="Version"
             subtitle="1.0.0"
             showArrow={false}

@@ -21,7 +21,7 @@ import { Audio } from 'expo-av';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { getPlayableAudioUrl } from '../utils/storage';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
@@ -80,6 +80,44 @@ interface User {
   followers: number;
   isVerified: boolean;
 }
+
+// Inside component, call hook to get badge count
+
+// Unread notifications badge: fetch and subscribe
+const useUnreadNotificationsCount = () => {
+  const { user } = useAuth();
+  const [count, setCount] = useState<number>(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchCount = async () => {
+      if (!user?.id) return;
+      const { count: c } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+      if (mounted && typeof c === 'number') setCount(c);
+    };
+    fetchCount();
+    const channel = supabase
+      .channel('notif-badge')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user?.id}` }, () => {
+        setCount(prev => prev + 1);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user?.id}` }, (payload: any) => {
+        // If is_read flipped true, decrement; if flipped false, increment
+        const wasRead = payload.old?.is_read === true;
+        const nowRead = payload.new?.is_read === true;
+        if (!wasRead && nowRead) setCount(prev => Math.max(0, prev - 1));
+        else if (wasRead && !nowRead) setCount(prev => prev + 1);
+      })
+      .subscribe();
+    return () => { mounted = false; channel.unsubscribe(); };
+  }, [user?.id]);
+
+  return count;
+};
 
 interface Post {
   id: string;
@@ -1414,6 +1452,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     </View>
   );
 
+  const badgeCount = useUnreadNotificationsCount();
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
@@ -1422,12 +1462,19 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>LinguaLink</Text>
-          <View style={styles.headerActions}>
+           <View style={styles.headerActions}>
             <TouchableOpacity>
               <Ionicons name="search" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton}>
-              <Ionicons name="notifications" size={24} color="#FFFFFF" />
+            <TouchableOpacity style={styles.headerButton} onPress={() => (navigation as any).navigate('Notifications')}>
+              <View style={{ position: 'relative' }}>
+                <Ionicons name="notifications" size={24} color="#FFFFFF" />
+                {badgeCount > 0 && (
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>{badgeCount > 99 ? '99+' : String(badgeCount)}</Text>
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -1608,6 +1655,23 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     marginLeft: 16,
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    borderRadius: 8,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
   tabContainer: {
     flexDirection: 'row',

@@ -47,6 +47,7 @@ import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
 import InterestSelectionScreen from './src/screens/InterestSelectionScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 
 // Import navigation types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -158,6 +159,7 @@ export type RootStackParamList = {
     story: Story;
   };
   ContactDiscovery: undefined;
+  Notifications: undefined;
 };
 
 export type TabParamList = {
@@ -596,6 +598,16 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
           component={SettingsScreen}
           options={{
             animation: 'slide_from_right',
+          }}
+        />
+
+        {/* Notifications Screen */}
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{
+            animation: 'slide_from_right',
+            headerShown: false,
           }}
         />
 
