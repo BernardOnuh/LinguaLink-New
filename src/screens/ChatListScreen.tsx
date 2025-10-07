@@ -58,6 +58,7 @@ interface Story {
   thumbnail: string;
   timestamp: string;
   viewed: boolean;
+  mediaUrl?: string;
 }
 
 const mockContacts: ChatContact[] = [
@@ -284,6 +285,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           thumbnail: '🎬',
           timestamp: '',
           viewed: false,
+          mediaUrl: row.media_url,
         };
       });
       setStories(mapped);
@@ -316,7 +318,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
                 unreadCount: 0,
                 isOnline: false,
               };
-              setStories(prev => [{ id: row.id, user: contactUser, thumbnail: '🎬', timestamp: '', viewed: false }, ...prev]);
+              setStories(prev => [{ id: row.id, user: contactUser, thumbnail: '🎬', timestamp: '', viewed: false, mediaUrl: row.media_url }, ...prev]);
             });
         }
       })

@@ -48,6 +48,8 @@ import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
 import InterestSelectionScreen from './src/screens/InterestSelectionScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
+import CreateStoryScreen from './src/screens/CreateStoryScreen';
+import StoryViewScreen from './src/screens/StoryViewScreen';
 
 // Import navigation types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -731,7 +733,7 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
         {/* Story Features */}
         <Stack.Screen
           name="CreateStory"
-          component={TellStoryScreen} // Can reuse or create separate CreateStoryScreen
+          component={CreateStoryScreen}
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
@@ -739,7 +741,7 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
         />
         <Stack.Screen
           name="StoryView"
-          component={TellStoryScreen} // Can create separate StoryViewScreen
+          component={StoryViewScreen}
           options={{
             animation: 'fade',
             presentation: 'fullScreenModal',
