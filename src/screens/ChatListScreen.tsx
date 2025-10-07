@@ -119,22 +119,7 @@ const mockGroups: Group[] = [
   },
 ];
 
-const mockStories: Story[] = [
-  {
-    id: 'story_1',
-    user: mockContacts[0],
-    thumbnail: '🎬',
-    timestamp: '2h',
-    viewed: false,
-  },
-  {
-    id: 'story_2',
-    user: mockContacts[1],
-    thumbnail: '🎵',
-    timestamp: '4h',
-    viewed: true,
-  },
-];
+
 
 const ChatListScreen: React.FC<any> = ({ navigation }) => {
   const { user } = useAuth();
@@ -146,6 +131,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [stories, setStories] = useState<Story[]>([]);
 
   // Helper
   const timeAgo = (dateIso?: string) => {
@@ -265,6 +251,92 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       .subscribe();
     return () => { channel.unsubscribe(); };
   }, [user?.id, fetchChats]);
+
+  // Stories: initial load and realtime updates
+  const fetchStories = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('stories')
+        .select('id, user_id, media_url, created_at, expires_at, is_public, profiles:profiles!inner(id, full_name, username, avatar_url, primary_language)')
+        .gt('expires_at', new Date().toISOString())
+        .eq('is_public', true)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      const mapped: Story[] = (data || []).map((row: any) => {
+        const name: string = row.profiles?.full_name || row.profiles?.username || 'User';
+        const userAvatar = name.trim().charAt(0).toUpperCase();
+        const contactUser: ChatContact = {
+          id: row.user_id,
+          name,
+          username: row.profiles?.username || 'user',
+          avatar: userAvatar,
+          language: row.profiles?.primary_language || '—',
+          lastMessage: '',
+          lastMessageTime: '',
+          unreadCount: 0,
+          isOnline: false,
+        };
+        return {
+          id: row.id,
+          user: contactUser,
+          thumbnail: '🎬',
+          timestamp: '',
+          viewed: false,
+        };
+      });
+      setStories(mapped);
+    } catch (e) {
+      // ignore
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchStories();
+    if (!user?.id) return;
+    const ch = supabase
+      .channel('stories-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stories' }, (payload: any) => {
+        const row = payload.new;
+        if (row.is_public && new Date(row.expires_at).getTime() > Date.now()) {
+          // Fetch profile for the new author (small follow-up query)
+          supabase.from('profiles').select('full_name, username, primary_language').eq('id', row.user_id).maybeSingle()
+            .then(({ data: prof }) => {
+              const name: string = prof?.full_name || prof?.username || 'User';
+              const userAvatar = name.trim().charAt(0).toUpperCase();
+              const contactUser: ChatContact = {
+                id: row.user_id,
+                name,
+                username: prof?.username || 'user',
+                avatar: userAvatar,
+                language: prof?.primary_language || '—',
+                lastMessage: '',
+                lastMessageTime: '',
+                unreadCount: 0,
+                isOnline: false,
+              };
+              setStories(prev => [{ id: row.id, user: contactUser, thumbnail: '🎬', timestamp: '', viewed: false }, ...prev]);
+            });
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stories' }, (payload: any) => {
+        const row = payload.new;
+        setStories(prev => {
+          // remove if expired or no longer public
+          if (!row.is_public || new Date(row.expires_at).getTime() <= Date.now()) {
+            return prev.filter(s => s.id !== row.id);
+          }
+          return prev;
+        });
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'stories' }, (payload: any) => {
+        const row = payload.old;
+        setStories(prev => prev.filter(s => s.id !== row.id));
+      })
+      .subscribe();
+    return () => { ch.unsubscribe(); };
+  }, [user?.id, fetchStories]);
 
   const CreateModal = () => (
     <Modal
@@ -641,12 +713,12 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             data={[
               {
                 id: 'add',
-                user: { name: 'Add Story', avatar: '➕' },
+                user: { name: 'Add Story', avatar: '➕' } as any,
                 thumbnail: '➕',
                 timestamp: '',
                 viewed: false
               },
-              ...mockStories
+              ...stories
             ]}
             renderItem={renderStoryItem}
             horizontal
