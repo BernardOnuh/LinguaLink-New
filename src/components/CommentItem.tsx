@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { getPlayableAudioUrl } from '../utils/storage';
 import { Comment, toggleCommentLike, deleteComment } from '../utils/interactions';
 import { useAuth } from '../context/AuthProvider';
@@ -49,7 +49,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [localLikesCount, setLocalLikesCount] = useState(comment.likes_count);
   const [localIsLiked, setLocalIsLiked] = useState(comment.is_liked_by_current_user);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const audioPlayer = useAudioPlayer();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
@@ -118,11 +118,9 @@ export const CommentItem: React.FC<CommentItemProps> = ({
     try {
       if (!comment.audio_url) return;
       if (isPlaying) {
-        if (sound) {
-          await sound.stopAsync();
-          await sound.unloadAsync();
+        if (audioPlayer.playing) {
+          audioPlayer.pause();
         }
-        setSound(null);
         setIsPlaying(false);
         return;
       }
@@ -132,18 +130,10 @@ export const CommentItem: React.FC<CommentItemProps> = ({
         setIsLoadingAudio(false);
         return;
       }
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: resolvedUrl },
-        { shouldPlay: true }
-      );
-      setSound(newSound);
+      audioPlayer.replace(resolvedUrl);
+      audioPlayer.play();
       setIsPlaying(true);
       setIsLoadingAudio(false);
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
-          setIsPlaying(false);
-        }
-      });
     } catch (e) {
       setIsLoadingAudio(false);
     }

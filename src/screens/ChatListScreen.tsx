@@ -257,23 +257,33 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
   const fetchStories = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const { data, error } = await supabase
+      const { data: rows, error } = await supabase
         .from('stories')
-        .select('id, user_id, media_url, created_at, expires_at, is_public, profiles:profiles!inner(id, full_name, username, avatar_url, primary_language)')
+        .select('id, user_id, media_url, created_at, expires_at, is_public')
         .gt('expires_at', new Date().toISOString())
         .eq('is_public', true)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      const mapped: Story[] = (data || []).map((row: any) => {
-        const name: string = row.profiles?.full_name || row.profiles?.username || 'User';
-        const userAvatar = name.trim().charAt(0).toUpperCase();
+      const userIds = Array.from(new Set((rows || []).map((r: any) => r.user_id)));
+      let profilesMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('id, full_name, username, primary_language, avatar_url')
+          .in('id', userIds);
+        (profs || []).forEach((p: any) => { profilesMap[p.id] = p; });
+      }
+      const mapped: Story[] = (rows || []).map((row: any) => {
+        const p = profilesMap[row.user_id] || {};
+        const name: string = p.full_name || p.username || 'User';
+        const userAvatar = name ? name.trim().charAt(0).toUpperCase() : '👤';
         const contactUser: ChatContact = {
           id: row.user_id,
           name,
-          username: row.profiles?.username || 'user',
+          username: p.username || 'user',
           avatar: userAvatar,
-          language: row.profiles?.primary_language || '—',
+          language: p.primary_language || '—',
           lastMessage: '',
           lastMessageTime: '',
           unreadCount: 0,
@@ -290,7 +300,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       });
       setStories(mapped);
     } catch (e) {
-      // ignore
+      console.log('fetchStories error', e);
     }
   }, [user?.id]);
 
@@ -428,7 +438,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           <Text style={styles.storyAvatarText}>{storyItem.user.avatar}</Text>
           {!storyItem.viewed && <View style={styles.storyIndicator} />}
         </View>
-        <Text style={styles.storyUsername} numberOfLines={1}>
+        <Text style={styles.storyUsername} numberOfLines={1}>       
           {storyItem.user.name.split(' ')[0]}
         </Text>
       </TouchableOpacity>

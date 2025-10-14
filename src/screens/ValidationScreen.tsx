@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { supabase } from '../supabaseClient';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { getPlayableAudioUrl } from '../utils/storage';
 import { useAuth } from '../context/AuthProvider';
 
@@ -78,7 +78,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
     dialect?: string;
     audio_url?: string;
   } | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const audioPlayer = useAudioPlayer();
   const [audioLoading, setAudioLoading] = useState(false);
   const [existingValidationId, setExistingValidationId] = useState<string | null>(null);
 
@@ -137,11 +137,11 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
   // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      if (sound) {
-        sound.unloadAsync().catch(() => {});
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
     };
-  }, [sound]);
+  }, [audioPlayer]);
 
   const handleValidation = async (isCorrect: boolean) => {
     if (!user?.id) {
@@ -239,25 +239,9 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
     }
     try {
       // If already playing for this screen, toggle pause/stop
-      if (sound) {
-        const status = await sound.getStatusAsync();
-        if ('isLoaded' in status && status.isLoaded) {
-          if (status.isPlaying) {
-            await sound.pauseAsync();
-            return;
-          }
-          // If we reached end previously, reset to start
-          const atEnd =
-            typeof status.positionMillis === 'number' &&
-            typeof status.durationMillis === 'number' &&
-            status.durationMillis > 0 &&
-            status.positionMillis >= status.durationMillis - 50; // allow small epsilon
-          if (atEnd) {
-            await sound.setPositionAsync(0);
-          }
-          await sound.playAsync();
-          return;
-        }
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
+        return;
       }
 
       setAudioLoading(true);
@@ -267,17 +251,9 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
         Alert.alert('Error', 'Unable to load audio file');
         return;
       }
-      const { sound: newSound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
-      setSound(newSound);
+      audioPlayer.replace(uri);
+      audioPlayer.play();
       setAudioLoading(false);
-      newSound.setOnPlaybackStatusUpdate(async (st) => {
-        if ('didJustFinish' in st && st.didJustFinish) {
-          try {
-            await newSound.pauseAsync();
-            await newSound.setPositionAsync(0);
-          } catch {}
-        }
-      });
     } catch (e) {
       setAudioLoading(false);
       Alert.alert('Error', 'Failed to play audio');

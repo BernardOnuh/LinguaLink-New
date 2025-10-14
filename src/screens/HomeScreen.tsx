@@ -13,7 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { getPlayableAudioUrl } from '../utils/storage';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -160,7 +160,7 @@ const mockStories: Story[] = [
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<'All' | 'Voice' | 'Stories' | 'Lab'>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const audioPlayer = useAudioPlayer();
   const [isPlaying, setIsPlaying] = useState<string | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
   const [showMoreOptions, setShowMoreOptions] = useState<string | null>(null);
@@ -183,9 +183,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const playAudio = async (clipId: string, audioUrl?: string) => {
     try {
-      if (sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
       setIsLoadingAudio(clipId);
       setIsPlaying(null);
@@ -198,18 +197,10 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         setIsLoadingAudio(null);
         return;
       }
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: resolvedUrl },
-        { shouldPlay: true }
-      );
-      setSound(newSound);
+      audioPlayer.replace(resolvedUrl);
+      audioPlayer.play();
       setIsPlaying(clipId);
       setIsLoadingAudio(null);
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
-          setIsPlaying(null);
-        }
-      });
     } catch (error) {
       setIsLoadingAudio(null);
     }
@@ -217,22 +208,20 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const stopAudio = async () => {
     try {
-      if (sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
-      setSound(null);
       setIsPlaying(null);
     } catch {}
   };
 
   useEffect(() => {
     return () => {
-      if (sound) {
-        sound.unloadAsync();
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
     };
-  }, [sound]);
+  }, [audioPlayer]);
 
   const handleValidate = (clipId: string, isCorrect: boolean) => {
     const validationType = isCorrect ? 'correct' : 'incorrect';

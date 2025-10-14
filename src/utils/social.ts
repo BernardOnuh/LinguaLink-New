@@ -1,5 +1,4 @@
 import { supabase } from '../supabaseClient';
-import { createFollowerNotification } from './notifications';
 
 export interface FollowerCounts {
   followers_count: number;
@@ -46,8 +45,6 @@ export const followUser = async (userId: string): Promise<boolean> => {
       return false;
     }
 
-    // Create notification for the user being followed
-    await createFollowerNotification(currentUserId, userId);
 
     return true;
   } catch (error) {
@@ -165,7 +162,7 @@ export const getFollowing = async (userId: string): Promise<UserProfile[]> => {
       return [];
     }
 
-    return data?.map(item => item.profiles) || [];
+    return (data?.map(item => item.profiles).filter(Boolean) as unknown as UserProfile[]) || [];
   } catch (error) {
     console.error('Error getting following:', error);
     return [];
@@ -202,7 +199,7 @@ export const getFollowers = async (userId: string): Promise<UserProfile[]> => {
       return [];
     }
 
-    return data?.map(item => item.profiles) || [];
+    return (data?.map(item => item.profiles).filter(Boolean) as unknown as UserProfile[]) || [];
   } catch (error) {
     console.error('Error getting followers:', error);
     return [];

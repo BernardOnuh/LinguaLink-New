@@ -3,7 +3,6 @@ import * as SecureStore from 'expo-secure-store';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../supabaseClient';
-import { createWelcomeNotification } from '../utils/notifications';
 
 type AuthContextValue = {
   session: import('@supabase/supabase-js').Session | null;
@@ -45,8 +44,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(newSession);
       setLoading(false);
 
-      // Handle OAuth sign-in success
-      if (event === 'SIGNED_IN' && newSession?.user) {
+      // Handle OAuth sign-in success (only for OAuth, not email signup)
+      if (event === 'SIGNED_IN' && newSession?.user && newSession.user.app_metadata?.provider === 'google') {
         await handleOAuthSignIn(newSession.user);
       }
     });
@@ -199,9 +198,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (insertError) {
           console.error('Error creating profile:', insertError);
         } else {
-          console.log('Profile created for OAuth user');
-          // Create welcome notification for new OAuth user
-          await createWelcomeNotification(user.id);
         }
       }
     } catch (error) {
@@ -252,16 +248,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       if (error) return error.message;
 
-      // If email confirmation is enabled, session may be null here. We will
-      // only attempt to update profile fields when we have a session.
-      const userId = data.user?.id;
-
-      // Create welcome notification for new user
-      if (userId) {
-        await createWelcomeNotification(userId);
-      }
-
-      // The trigger will attempt to populate profile from metadata.
+      // For email signup, we expect no session until email is confirmed
+      // Return success to show verification screen, but don't create session yet
       return null;
     } finally {
       setLoading(false);

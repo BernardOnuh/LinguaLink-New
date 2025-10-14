@@ -220,8 +220,8 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         >
           <SettingsItem
             title="Notifications"
-            subtitle="View recent notifications"
-            onPress={() => navigation.navigate('Notifications' as any)}
+            subtitle="Notifications are disabled in Expo Go"
+            onPress={() => {}}
           />
           <SettingsItem
             title="Version"

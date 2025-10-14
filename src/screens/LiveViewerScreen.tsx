@@ -16,7 +16,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 
@@ -66,7 +66,14 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [videoStatus, setVideoStatus] = useState<any>({});
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const videoRef = useRef<Video>(null);
+  const videoPlayer = useVideoPlayer('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
+
+  // Set video source when liveStream changes
+  useEffect(() => {
+    if (liveStream?.id) {
+      videoPlayer.replace(getStreamingUrl(liveStream.id));
+    }
+  }, [liveStream?.id, videoPlayer]);
 
   // Animation values
   const liveAnim = useRef(new Animated.Value(1)).current;
@@ -283,12 +290,10 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
   };
 
   const toggleVideoPlayback = async () => {
-    if (videoRef.current) {
-      if (isVideoPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        await videoRef.current.playAsync();
-      }
+    if (isVideoPlaying) {
+      videoPlayer.pause();
+    } else {
+      videoPlayer.play();
     }
   };
 
@@ -399,19 +404,9 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
         <View style={styles.videoContainer}>
           {liveStream.is_live ? (
             <View style={styles.videoPlayerContainer}>
-              <Video
-                ref={videoRef}
+              <VideoView
                 style={styles.videoPlayer}
-                source={{
-                  uri: getStreamingUrl(liveStream.id),
-                }}
-                shouldPlay={true}
-                isLooping={false}
-                resizeMode={ResizeMode.CONTAIN}
-                onPlaybackStatusUpdate={handleVideoPlaybackStatus}
-                onError={(error) => {
-                  console.error('Video playback error:', error);
-                }}
+                player={videoPlayer}
               />
 
               {/* Video Overlay */}

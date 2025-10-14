@@ -17,7 +17,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { getPlayableAudioUrl } from '../utils/storage';
@@ -174,7 +174,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const audioPlayer = useAudioPlayer();
   const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
@@ -420,11 +420,11 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   // Cleanup audio when component unmounts
   useEffect(() => {
     return () => {
-      if (sound) {
-        sound.unloadAsync();
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
     };
-  }, [sound]);
+  }, [audioPlayer]);
 
   // Check follow status for current user
   useEffect(() => {
@@ -758,19 +758,15 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
     try {
       // If this post is already playing, stop it
-      if (currentPlayingId === postId && sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-        setSound(null);
+      if (currentPlayingId === postId && audioPlayer.playing) {
+        audioPlayer.pause();
         setCurrentPlayingId(null);
         return;
       }
 
       // Stop any currently playing audio
-      if (sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-        setSound(null);
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
 
       // Set loading state
@@ -784,22 +780,11 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         return;
       }
 
-      // Create and play the audio
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: resolvedUrl },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
+      // Load and play the audio
+      audioPlayer.replace(resolvedUrl);
+      await audioPlayer.play();
       setCurrentPlayingId(postId);
       setLoadingAudioId(null);
-
-      // Set up playback status monitoring
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
-          setCurrentPlayingId(null);
-        }
-      });
 
       console.log('Playing audio:', resolvedUrl);
     } catch (error) {
@@ -1452,7 +1437,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     </View>
   );
 
-  const badgeCount = useUnreadNotificationsCount();
+  const badgeCount = 0; // Notifications disabled
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1466,14 +1451,9 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             <TouchableOpacity>
               <Ionicons name="search" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={() => (navigation as any).navigate('Notifications')}>
+            <TouchableOpacity style={styles.headerButton}>
               <View style={{ position: 'relative' }}>
                 <Ionicons name="notifications" size={24} color="#FFFFFF" />
-                {badgeCount > 0 && (
-                  <View style={styles.notifBadge}>
-                    <Text style={styles.notifBadgeText}>{badgeCount > 99 ? '99+' : String(badgeCount)}</Text>
-                  </View>
-                )}
               </View>
             </TouchableOpacity>
           </View>

@@ -4,7 +4,7 @@ import { SafeAreaView, View, StyleSheet, Dimensions, TouchableOpacity, Text, Ima
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
-import { Video } from 'expo-video';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 const { width, height } = Dimensions.get('window');
 
@@ -17,6 +17,8 @@ const isVideoUrl = (url?: string) => {
 const StoryViewScreen: React.FC<any> = ({ navigation, route }) => {
   const { user } = useAuth();
   const story = route.params?.story as { id: string; user: { name: string }; thumbnail: string; timestamp?: string; viewed?: boolean; mediaUrl?: string; media_url?: string } | undefined;
+  const mediaUrl = (story as any)?.mediaUrl || (story as any)?.media_url || '';
+  const videoPlayer = useVideoPlayer(mediaUrl);
 
   useEffect(() => {
     const markViewed = async () => {
@@ -27,8 +29,6 @@ const StoryViewScreen: React.FC<any> = ({ navigation, route }) => {
     };
     markViewed();
   }, [user?.id, story?.id]);
-
-  const mediaUrl = (story as any)?.mediaUrl || (story as any)?.media_url || '';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -44,13 +44,9 @@ const StoryViewScreen: React.FC<any> = ({ navigation, route }) => {
         {!mediaUrl ? (
           <Text style={{ color: '#FFF' }}>No media</Text>
         ) : isVideoUrl(mediaUrl) ? (
-          <Video
+          <VideoView
             style={styles.media}
-            source={{ uri: mediaUrl }}
-            useNativeControls
-            isLooping
-            shouldPlay
-            resizeMode="contain"
+            player={videoPlayer}
           />
         ) : (
           <Image source={{ uri: mediaUrl }} style={styles.media} resizeMode="contain" />

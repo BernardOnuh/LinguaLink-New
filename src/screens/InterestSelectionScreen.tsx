@@ -117,8 +117,7 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
         }
 
         console.log('Interests saved successfully.');
-        // Don't navigate manually - let AuthGate detect the change
-        // The Supabase realtime subscription in AuthGate will handle this
+        navigation.replace('MainTabs');
       }
     } catch (error) {
       console.error('Error in handleContinue:', error);
@@ -164,7 +163,7 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
         }
 
         console.log('Onboarding skipped successfully. Navigating to Home tab.');
-        navigation.navigate('MainTabs', { screen: 'Home' });
+        navigation.replace('MainTabs');
       }
     } catch (e) {
       console.error('Error marking onboarding complete on skip:', e);
