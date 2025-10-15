@@ -15,6 +15,7 @@ import {
   Alert,
   Animated,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -133,7 +134,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           media_url: msg.media_url,
           payload: msg.payload,
           senderName: 'Unknown User',
-          senderAvatar: '👤',
+          senderAvatar: 'You',
           isTranslationVisible: false,
           audio_url: msg.type === 'voice' ? msg.media_url : undefined,
           duration: msg.type === 'voice' ? 0 : undefined, // Default duration for voice messages
@@ -157,7 +158,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           media_url: msg.media_url,
           payload: msg.payload,
           senderName: profile?.full_name || 'Unknown User',
-          senderAvatar: profile?.avatar_url ? '👤' : '👤',
+          senderAvatar: profile?.avatar_url || profile?.full_name?.charAt(0).toUpperCase() || 'U',
           isTranslationVisible: false,
           // For voice messages, derive audio_url and duration from media_url and payload
           audio_url: msg.type === 'voice' ? msg.media_url : undefined,
@@ -302,7 +303,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               updated_at: payload.new.updated_at,
               media_url: payload.new.media_url,
               senderName: profileData?.full_name || 'Unknown User',
-              senderAvatar: profileData?.avatar_url ? '👤' : '👤',
+              senderAvatar: profileData?.avatar_url || profileData?.full_name?.charAt(0).toUpperCase() || 'U',
               isTranslationVisible: false,
               audio_url: payload.new.type === 'voice' ? payload.new.media_url : undefined,
               duration: payload.new.type === 'voice' ? 0 : undefined,
@@ -564,7 +565,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           ? {
               ...data,
               senderName: 'You',
-              senderAvatar: '👤',
+              senderAvatar: 'You',
               isTranslationVisible: false,
             } as Message
           : msg
@@ -792,7 +793,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           ? {
               ...data,
               senderName: 'You',
-              senderAvatar: '👤',
+              senderAvatar: 'You',
               isTranslationVisible: false,
               audio_url: data.media_url,
               duration: 0,
@@ -876,7 +877,15 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       ]}>
         {!isMe && (
           <View style={styles.senderInfo}>
-            <Text style={styles.senderAvatar}>{message.senderAvatar}</Text>
+            {message.senderAvatar && message.senderAvatar.startsWith('http') ? (
+              <Image
+                source={{ uri: message.senderAvatar }}
+                style={styles.avatarImage}
+                defaultSource={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' }}
+              />
+            ) : (
+              <Text style={styles.senderAvatar}>{message.senderAvatar}</Text>
+            )}
             <Text style={styles.senderName}>{message.senderName}</Text>
           </View>
         )}
@@ -1226,6 +1235,12 @@ const styles = StyleSheet.create({
   },
   senderAvatar: {
     fontSize: 14,
+    marginRight: 6,
+  },
+  avatarImage: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     marginRight: 6,
   },
   senderName: {

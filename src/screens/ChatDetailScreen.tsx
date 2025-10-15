@@ -15,6 +15,7 @@ import {
   Alert,
   Animated,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -87,7 +88,15 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       headerTitle: () => (
         <View style={styles.headerTitleContainer}>
           <View style={styles.headerAvatar}>
-            <Text style={styles.headerAvatarText}>{contact.avatar}</Text>
+            {contact.avatarUrl ? (
+              <Image
+                source={{ uri: contact.avatarUrl }}
+                style={styles.headerAvatarImage}
+                defaultSource={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' }}
+              />
+            ) : (
+              <Text style={styles.headerAvatarText}>{contact.avatar}</Text>
+            )}
             {contact.isOnline && <View style={styles.headerOnlineIndicator} />}
           </View>
           <View>
@@ -139,7 +148,15 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         headerTitle: () => (
           <View style={styles.headerTitleContainer}>
             <View style={styles.headerAvatar}>
-              <Text style={styles.headerAvatarText}>{contact.avatar}</Text>
+              {contact.avatarUrl ? (
+                <Image
+                  source={{ uri: contact.avatarUrl }}
+                  style={styles.headerAvatarImage}
+                  defaultSource={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' }}
+                />
+              ) : (
+                <Text style={styles.headerAvatarText}>{contact.avatar}</Text>
+              )}
               {online && <View style={styles.headerOnlineIndicator} />}
             </View>
             <View>
@@ -550,7 +567,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         duration: 0,
         translated_content: `[Auto-translated to ${contact.language}]`,
         senderName: 'You',
-        senderAvatar: '👤',
+        senderAvatar: 'You',
         isTranslationVisible: false,
         audio_url: urlData.publicUrl,
         // Legacy fields
@@ -596,7 +613,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           ? {
               ...data,
               senderName: 'You',
-              senderAvatar: '👤',
+              senderAvatar: 'You',
               isTranslationVisible: false,
               audio_url: data.media_url,
               duration: 0,
@@ -928,6 +945,11 @@ const styles = StyleSheet.create({
   },
   headerAvatarText: {
     fontSize: 18,
+  },
+  headerAvatarImage: {
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
   },
   headerOnlineIndicator: {
     position: 'absolute',
