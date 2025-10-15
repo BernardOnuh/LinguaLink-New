@@ -62,32 +62,10 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       console.log('Creating group with user ID:', user.id);
       console.log('Group data:', { title: newGroup.name, is_group: true, created_by: user.id });
 
-      // Check current session
-      console.log('Current session from AuthProvider:', session);
-      console.log('Current user from AuthProvider:', user);
-
       if (!session) {
         Alert.alert('Error', 'No active session found. Please log in again.');
         return;
       }
-
-      // Refresh session to ensure it's valid
-      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
-      console.log('Refreshed session:', refreshedSession, refreshError);
-
-      // Check if the session has a valid access token
-      if (refreshedSession.session?.access_token) {
-        console.log('Access token exists:', refreshedSession.session.access_token.substring(0, 20) + '...');
-      } else {
-        console.log('No access token found in session');
-      }
-
-      // Test authentication with a simple query
-      const { data: testData, error: testError } = await supabase
-        .from('profiles')
-        .select('id')
-        .limit(1);
-      console.log('Test query result:', testData, testError);
 
       // Create conversation
       const { data: conversation, error: convError } = await supabase
