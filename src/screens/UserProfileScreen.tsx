@@ -15,6 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
@@ -59,6 +60,7 @@ interface UserProfile {
 }
 
 const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const { user: authUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'Clips' | 'Badges' | 'Rewards'>('Clips');
 
@@ -443,7 +445,7 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>Profile</Text>
           </View>
@@ -461,7 +463,7 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>Profile</Text>
           </View>
@@ -482,7 +484,7 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Profile</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -634,6 +636,7 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -710,7 +713,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FF8A00',
-    paddingTop: height * 0.02,
     paddingBottom: height * 0.03,
     paddingHorizontal: width * 0.05,
   },

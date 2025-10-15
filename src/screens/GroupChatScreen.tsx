@@ -16,6 +16,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App'
 const { width, height } = Dimensions.get('window');
@@ -84,6 +85,7 @@ const mockMessages: Message[] = [
 ];
 
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { group } = route.params;
   const [messages, setMessages] = useState<Message[]>(mockMessages);
   const [newMessage, setNewMessage] = useState('');
@@ -116,13 +118,13 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       ),
       headerRight: () => (
         <View style={styles.headerActions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerButton}
             onPress={() => navigation.navigate('GroupCall', { group })}
           >
             <Ionicons name="call" size={24} color="#FF8A00" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerButton}
             onPress={() => navigation.navigate('GroupCall', { group })}
           >
@@ -194,14 +196,14 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             senderAvatar: '👩‍🎨',
           }
         ];
-        
+
         const randomResponse = responses[Math.floor(Math.random() * responses.length)];
         const response: Message = {
           id: Date.now().toString(),
           ...randomResponse,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
-        
+
         setMessages(prev => [...prev, response]);
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -221,11 +223,11 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         sender: 'me',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      
+
       setMessages([...messages, message]);
       setNewMessage('');
       setTypingUsers(['user1', 'user3']); // Simulate multiple users typing
-      
+
       // Scroll to bottom
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -234,8 +236,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const toggleTranslation = (messageId: string) => {
-    setMessages(messages.map(msg => 
-      msg.id === messageId 
+    setMessages(messages.map(msg =>
+      msg.id === messageId
         ? { ...msg, isTranslationVisible: !msg.isTranslationVisible }
         : msg
     ));
@@ -244,7 +246,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const startVoiceRecording = () => {
     setIsRecording(true);
     Alert.alert(
-      'Voice Recording', 
+      'Voice Recording',
       'Recording started... Your message will be translated for all group members!',
       [
         {
@@ -257,7 +259,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const stopVoiceRecording = () => {
     setIsRecording(false);
-    
+
     const voiceMessage: Message = {
       id: Date.now().toString(),
       text: '[Voice message in your language]',
@@ -267,10 +269,10 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       isVoiceMessage: true,
       duration: '0:08',
     };
-    
+
     setMessages([...messages, voiceMessage]);
     setTypingUsers(['user2']); // Simulate response
-    
+
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
@@ -285,7 +287,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const renderMessage = (message: Message) => {
     const isMe = message.sender === 'me';
-    
+
     return (
       <View key={message.id} style={[
         styles.messageContainer,
@@ -297,8 +299,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={styles.senderName}>{message.senderName}</Text>
           </View>
         )}
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[
             styles.messageBubble,
             isMe ? styles.myMessageBubble : styles.theirMessageBubble
@@ -307,14 +309,14 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           activeOpacity={0.8}
         >
           {message.isVoiceMessage ? (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.voiceMessageContent}
               onPress={() => playVoiceMessage(message.id)}
             >
-              <Ionicons 
-                name="play-circle" 
-                size={32} 
-                color={isMe ? "#FFFFFF" : "#FF8A00"} 
+              <Ionicons
+                name="play-circle"
+                size={32}
+                color={isMe ? "#FFFFFF" : "#FF8A00"}
               />
               <View style={styles.voiceMessageInfo}>
                 <Text style={[
@@ -332,15 +334,15 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
               <View style={styles.waveformContainer}>
                 {[1, 2, 3, 4, 5].map((bar) => (
-                  <View 
+                  <View
                     key={bar}
                     style={[
                       styles.waveformBar,
-                      { 
+                      {
                         height: Math.random() * 20 + 10,
                         backgroundColor: isMe ? "#FFFFFF" : "#FF8A00"
                       }
-                    ]} 
+                    ]}
                   />
                 ))}
               </View>
@@ -353,7 +355,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               {message.text}
             </Text>
           )}
-          
+
           {message.translatedText && (showTranslations || message.isTranslationVisible) && (
             <View style={styles.translationContainer}>
               <Text style={[
@@ -364,7 +366,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               </Text>
             </View>
           )}
-          
+
           <Text style={[
             styles.messageTimestamp,
             isMe ? styles.myTimestamp : styles.theirTimestamp
@@ -378,7 +380,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const renderTypingIndicator = () => {
     if (typingUsers.length === 0) return null;
-    
+
     return (
       <View style={styles.typingContainer}>
         <View style={styles.typingBubble}>
@@ -389,8 +391,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </View>
         <Text style={styles.typingText}>
-          {typingUsers.length === 1 
-            ? `Someone is typing...` 
+          {typingUsers.length === 1
+            ? `Someone is typing...`
             : `${typingUsers.length} people are typing...`
           }
         </Text>
@@ -401,23 +403,23 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Translation Toggle */}
-      <View style={styles.translationToggle}>
-        <TouchableOpacity 
+      <View style={[styles.translationToggle, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity
           style={styles.translationButton}
           onPress={() => setShowTranslations(!showTranslations)}
         >
-          <Ionicons 
-            name={showTranslations ? "language" : "language-outline"} 
-            size={16} 
-            color="#10B981" 
+          <Ionicons
+            name={showTranslations ? "language" : "language-outline"}
+            size={16}
+            color="#10B981"
           />
           <Text style={styles.translationButtonText}>
             {showTranslations ? 'Hide Translations' : 'Show Translations'}
           </Text>
         </TouchableOpacity>
-        
+
         <View style={styles.languageIndicator}>
           <Text style={styles.languageIndicatorText}>
             Multi-language • {group.language}
@@ -426,7 +428,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       </View>
 
       {/* Messages */}
-      <ScrollView 
+      <ScrollView
         ref={scrollViewRef}
         style={styles.messagesContainer}
         showsVerticalScrollIndicator={false}
@@ -437,15 +439,15 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       </ScrollView>
 
       {/* Input Area */}
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.inputContainer}
+        style={[styles.inputContainer, { paddingBottom: insets.bottom + 12 }]}
       >
         <View style={styles.inputRow}>
           <TouchableOpacity style={styles.attachButton}>
             <Ionicons name="add" size={24} color="#999" />
           </TouchableOpacity>
-          
+
           <View style={styles.textInputContainer}>
             <TextInput
               style={styles.textInput}
@@ -462,26 +464,26 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               </Text>
             )}
           </View>
-          
+
           {newMessage.trim() ? (
             <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
               <Ionicons name="send" size={20} color="#FFFFFF" />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.voiceButton, isRecording && styles.recordingButton]}
               onPressIn={startVoiceRecording}
               onPressOut={stopVoiceRecording}
             >
-              <Ionicons 
-                name={isRecording ? "stop" : "mic"} 
-                size={20} 
-                color="#FFFFFF" 
+              <Ionicons
+                name={isRecording ? "stop" : "mic"}
+                size={20}
+                color="#FFFFFF"
               />
             </TouchableOpacity>
           )}
         </View>
-        
+
         <View style={styles.inputHint}>
           <Ionicons name="information-circle" size={12} color="#10B981" />
           <Text style={styles.inputHintText}>
@@ -533,7 +535,7 @@ const styles = StyleSheet.create({
   translationToggle: {
     backgroundColor: '#FFFFFF',
     paddingHorizontal: width * 0.05,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',
     flexDirection: 'row',

@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
@@ -31,6 +32,7 @@ interface Props {
 }
 
 const SignInScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { signIn, signInWithGoogle, loading } = useAuth();
   const [credentials, setCredentials] = useState({
     email: '',
@@ -120,7 +122,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         {/* Header */}
-        <View style={styles.formHeader}>
+        <View style={[styles.formHeader, { paddingTop: insets.top + 16 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -130,7 +132,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
 
         <ScrollView
           style={styles.formContent}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -248,7 +250,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: width * 0.05,
-    paddingTop: height * 0.06,
     paddingBottom: height * 0.02,
   },
   formTitle: {

@@ -19,6 +19,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -61,40 +62,6 @@ interface Story {
   mediaUrl?: string;
 }
 
-const mockContacts: ChatContact[] = [
-  {
-    id: '1',
-    name: 'Chidi Okafor',
-    username: 'ChidiIgbo',
-    avatar: '👨🏾',
-    language: 'Igbo',
-    lastMessage: 'Ndewo, kedu ka ị mere?',
-    lastMessageTranslated: 'Hello, how are you doing?',
-    lastMessageTime: '2m',
-    unreadCount: 2,
-    isOnline: true,
-    isFollowing: true,
-    followers: 1254,
-    posts: 45,
-  },
-  {
-    id: '2',
-    name: 'Aisha Mohammed',
-    username: 'aisha_kano',
-    avatar: '👩🏾',
-    language: 'Hausa',
-    lastMessage: 'Sannu, yaya dai?',
-    lastMessageTranslated: 'Hello, how are things?',
-    lastMessageTime: '15m',
-    unreadCount: 0,
-    isOnline: true,
-    isFollowing: false,
-    followers: 892,
-    posts: 23,
-  },
-  // Add more contacts...
-];
-
 const mockGroups: Group[] = [
   {
     id: 'group_1',
@@ -123,6 +90,7 @@ const mockGroups: Group[] = [
 
 
 const ChatListScreen: React.FC<any> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'Chats' | 'Groups' | 'Contacts' | 'Games'>('Chats');
   const [searchQuery, setSearchQuery] = useState('');
@@ -438,7 +406,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           <Text style={styles.storyAvatarText}>{storyItem.user.avatar}</Text>
           {!storyItem.viewed && <View style={styles.storyIndicator} />}
         </View>
-        <Text style={styles.storyUsername} numberOfLines={1}>       
+        <Text style={styles.storyUsername} numberOfLines={1}>
           {storyItem.user.name.split(' ')[0]}
         </Text>
       </TouchableOpacity>
@@ -688,7 +656,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.005 }]}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>LinguaChat</Text>
           <View style={styles.headerActions}>
@@ -790,6 +758,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         style={styles.contentList}
         showsVerticalScrollIndicator={false}
         refreshControl={undefined}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
         {getTabContent()}
       </ScrollView>

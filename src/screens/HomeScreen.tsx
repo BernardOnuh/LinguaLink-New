@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer } from 'expo-audio';
 import { getPlayableAudioUrl } from '../utils/storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -158,6 +159,7 @@ const mockStories: Story[] = [
 ];
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'All' | 'Voice' | 'Stories' | 'Lab'>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const audioPlayer = useAudioPlayer();
@@ -589,7 +591,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
         <View style={styles.headerContent}>
           <Ionicons name="mic" size={24} color="#FFFFFF" />
           <Text style={styles.headerTitle}>LinguaLink</Text>
@@ -650,7 +652,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FF8A00',
-    paddingTop: height * 0.02,
     paddingBottom: height * 0.02,
     paddingHorizontal: width * 0.05,
   },
