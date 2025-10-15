@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import io from 'socket.io-client';
 import { supabase } from '../supabaseClient';
 

@@ -165,17 +165,6 @@ export const createComment = async (
       return null;
     }
 
-    // Create notification for the clip owner (only for top-level comments)
-    if (!parentCommentId) {
-      const { createCommentNotification } = await import('./notifications');
-      await createCommentNotification(
-        currentUserId,
-        clipData.user_id,
-        clipId,
-        clipData.phrase,
-        content
-      );
-    }
 
     return {
       ...data,
@@ -305,15 +294,6 @@ export const toggleVoiceClipLike = async (clipId: string): Promise<boolean> => {
         return false;
       }
 
-      // Create notification for the clip owner
-      const { createLikeNotification } = await import('./notifications');
-      await createLikeNotification(
-        currentUserId,
-        clipData.user_id,
-        clipId,
-        'voice_clip',
-        clipData.phrase
-      );
     }
 
     return true;
@@ -377,15 +357,6 @@ export const toggleCommentLike = async (commentId: string): Promise<boolean> => 
         return false;
       }
 
-      // Create notification for the comment owner
-      const { createLikeNotification } = await import('./notifications');
-      await createLikeNotification(
-        currentUserId,
-        commentData.user_id,
-        commentId,
-        'comment',
-        commentData.content
-      );
     }
 
     return true;

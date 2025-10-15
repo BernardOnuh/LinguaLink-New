@@ -17,11 +17,12 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { getPlayableAudioUrl } from '../utils/storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -167,6 +168,7 @@ interface LiveStream {
 
 
 const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'Following' | 'Discover' | 'Trending' | 'Live'>('Following');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
@@ -174,7 +176,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const audioPlayer = useAudioPlayer();
   const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
@@ -420,11 +422,11 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   // Cleanup audio when component unmounts
   useEffect(() => {
     return () => {
-      if (sound) {
-        sound.unloadAsync();
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
     };
-  }, [sound]);
+  }, [audioPlayer]);
 
   // Check follow status for current user
   useEffect(() => {
@@ -758,19 +760,15 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
     try {
       // If this post is already playing, stop it
-      if (currentPlayingId === postId && sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-        setSound(null);
+      if (currentPlayingId === postId && audioPlayer.playing) {
+        audioPlayer.pause();
         setCurrentPlayingId(null);
         return;
       }
 
       // Stop any currently playing audio
-      if (sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-        setSound(null);
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
 
       // Set loading state
@@ -784,22 +782,11 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         return;
       }
 
-      // Create and play the audio
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: resolvedUrl },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
+      // Load and play the audio
+      audioPlayer.replace(resolvedUrl);
+      await audioPlayer.play();
       setCurrentPlayingId(postId);
       setLoadingAudioId(null);
-
-      // Set up playback status monitoring
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
-          setCurrentPlayingId(null);
-        }
-      });
 
       console.log('Playing audio:', resolvedUrl);
     } catch (error) {
@@ -901,7 +888,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           style={styles.modalBackground}
           onPress={() => setShowCreateModal(false)}
         />
-        <View style={styles.createModalContent}>
+        <View style={[styles.createModalContent, { paddingBottom: insets.bottom + 16 }]}>
           <Text style={styles.createModalTitle}>Create New Post</Text>
 
           <ScrollView
@@ -1040,7 +1027,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           style={styles.modalBackground}
           onPress={() => setShowShareModal(null)}
         />
-        <View style={styles.shareModalContent}>
+        <View style={[styles.shareModalContent, { paddingBottom: insets.bottom + 24 }]}>
           <Text style={styles.shareModalTitle}>Share Post</Text>
 
           <TouchableOpacity
@@ -1103,7 +1090,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           style={styles.modalBackground}
           onPress={() => setShowMoreOptions(null)}
         />
-        <View style={styles.moreOptionsContent}>
+        <View style={[styles.moreOptionsContent, { paddingBottom: insets.bottom + 24 }]}>
           <TouchableOpacity
             style={styles.optionItem}
             onPress={() => {
@@ -1452,28 +1439,23 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     </View>
   );
 
-  const badgeCount = useUnreadNotificationsCount();
+  const badgeCount = 0; // Notifications disabled
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.01 }]}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>LinguaLink</Text>
            <View style={styles.headerActions}>
             <TouchableOpacity>
               <Ionicons name="search" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={() => (navigation as any).navigate('Notifications')}>
+            <TouchableOpacity style={styles.headerButton}>
               <View style={{ position: 'relative' }}>
                 <Ionicons name="notifications" size={24} color="#FFFFFF" />
-                {badgeCount > 0 && (
-                  <View style={styles.notifBadge}>
-                    <Text style={styles.notifBadgeText}>{badgeCount > 99 ? '99+' : String(badgeCount)}</Text>
-                  </View>
-                )}
               </View>
             </TouchableOpacity>
           </View>
@@ -1553,7 +1535,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                   </TouchableOpacity>
                 )}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.liveStreamsList}
+                contentContainerStyle={[styles.liveStreamsList, { paddingBottom: insets.bottom + 100 }]}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}
@@ -1586,6 +1568,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => renderPost(item)}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1617,7 +1600,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
       {/* Floating Create Button */}
       <TouchableOpacity
-        style={styles.createButton}
+        style={[styles.createButton, { bottom: insets.bottom + 20 }]}
         onPress={() => setShowCreateModal(true)}
       >
         <Ionicons name="add" size={24} color="#FFFFFF" />

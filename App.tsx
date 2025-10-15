@@ -8,7 +8,6 @@ import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator, Scr
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 // import { deepLinkHandler } from './src/utils/deepLinking'; // No longer used; rely on Navigation linking prop
 import { supabase } from './src/supabaseClient';
@@ -47,7 +46,8 @@ import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
 import InterestSelectionScreen from './src/screens/InterestSelectionScreen';
-import NotificationsScreen from './src/screens/NotificationsScreen';
+import CreateStoryScreen from './src/screens/CreateStoryScreen';
+import StoryViewScreen from './src/screens/StoryViewScreen';
 
 // Import navigation types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -159,7 +159,6 @@ export type RootStackParamList = {
     story: Story;
   };
   ContactDiscovery: undefined;
-  Notifications: undefined;
 };
 
 export type TabParamList = {
@@ -522,17 +521,17 @@ const AuthStack = () => (
           }}
         />
         <Stack.Screen
-          name="VerifyEmail"
-          component={VerifyEmailScreen}
-          options={{
-            animation: 'slide_from_right',
-          }}
-        />
-        <Stack.Screen
           name="AuthCallback"
           component={AuthCallbackScreen}
           options={{
             animation: 'fade',
+          }}
+        />
+        <Stack.Screen
+          name="VerifyEmail"
+          component={VerifyEmailScreen}
+          options={{
+            animation: 'slide_from_right',
           }}
         />
 
@@ -601,15 +600,6 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
           }}
         />
 
-        {/* Notifications Screen */}
-        <Stack.Screen
-          name="Notifications"
-          component={NotificationsScreen}
-          options={{
-            animation: 'slide_from_right',
-            headerShown: false,
-          }}
-        />
 
         {/* Rewards Screen */}
         <Stack.Screen
@@ -731,7 +721,7 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
         {/* Story Features */}
         <Stack.Screen
           name="CreateStory"
-          component={TellStoryScreen} // Can reuse or create separate CreateStoryScreen
+          component={CreateStoryScreen}
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
@@ -739,7 +729,7 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
         />
         <Stack.Screen
           name="StoryView"
-          component={TellStoryScreen} // Can create separate StoryViewScreen
+          component={StoryViewScreen}
           options={{
             animation: 'fade',
             presentation: 'fullScreenModal',
@@ -765,7 +755,6 @@ const AuthGate = () => {
   const [checking, setChecking] = React.useState(false);
   const [onboardingComplete, setOnboardingComplete] = React.useState<boolean | null>(null);
 
-  console.log('AuthGate: session =', !!session, 'loading =', loading);
 
   const checkOnboarding = React.useCallback(async () => {
     if (!session) {
@@ -817,45 +806,6 @@ const AuthGate = () => {
     }
   }, [session, loading, checkOnboarding]);
 
-  // Register push notifications device token after login
-  React.useEffect(() => {
-    const registerPush = async () => {
-      try {
-        if (!session?.user?.id) return;
-        // Configure foreground behavior (optional)
-        Notifications.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldShowAlert: true,
-            shouldPlaySound: false,
-            shouldSetBadge: false,
-            // SDK 53+ NotificationBehavior fields
-            shouldShowBanner: true,
-            shouldShowList: true,
-          }),
-        });
-
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-        if (finalStatus !== 'granted') return;
-
-        // Expo push token
-        const projectId = (await Notifications.getExpoPushTokenAsync()).data;
-        const platform = Device.osName || 'unknown';
-
-        // Persist to backend
-        await supabase.rpc('register_device', { p_token: projectId, p_platform: platform });
-      } catch (e) {
-        // no-op
-      }
-    };
-    if (session && !loading) {
-      registerPush();
-    }
-  }, [session, loading]);
 
   // Listen for changes to the profiles table to detect when onboarding is completed
   React.useEffect(() => {
@@ -901,15 +851,7 @@ const AuthGate = () => {
 
   // Session present; route based on onboarding
   if (onboardingComplete === false) {
-    return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen
-          name="InterestSelection"
-          component={InterestSelectionScreen}
-          options={{ animation: 'slide_from_right' }}
-        />
-      </Stack.Navigator>
-    );
+    return <MainStack initialRouteName="InterestSelection" />;
   }
 
   // Onboarding complete → main app

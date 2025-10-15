@@ -1,5 +1,4 @@
 import { supabase } from '../supabaseClient';
-import { createValidationNotification, createClipValidatedNotification } from './notifications';
 
 export interface VoiceClipWithUser {
   id: string;
@@ -341,13 +340,6 @@ export const submitValidation = async (
         return false;
       }
 
-      // Create notification for the clip owner (only for new validations)
-      await createValidationNotification(
-        currentUserId,
-        clipData.user_id,
-        clipId,
-        clipData.phrase
-      );
     }
 
     // Check if clip should be marked as validated (e.g., 3+ positive validations)
@@ -364,12 +356,6 @@ export const submitValidation = async (
         .update({ is_validated: true })
         .eq('id', clipId);
 
-      // Create clip validated notification
-      await createClipValidatedNotification(
-        clipData.user_id,
-        clipId,
-        clipData.phrase
-      );
     }
 
     return true;

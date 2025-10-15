@@ -14,7 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -79,7 +79,7 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
   const [videoClips, setVideoClips] = useState<VideoClip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const audioPlayer = useAudioPlayer();
   const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
   const { user } = useAuth();
 
@@ -137,11 +137,11 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
   // Cleanup audio when component unmounts
   useEffect(() => {
     return () => {
-      if (sound) {
-        sound.unloadAsync();
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
     };
-  }, [sound]);
+  }, [audioPlayer]);
 
   const handleAudioPlay = async (clipId: string, audioUrl?: string) => {
     if (!audioUrl) {
@@ -151,19 +151,15 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       // If this clip is already playing, stop it
-      if (currentPlayingId === clipId && sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-        setSound(null);
+      if (currentPlayingId === clipId && audioPlayer.playing) {
+        audioPlayer.pause();
         setCurrentPlayingId(null);
         return;
       }
 
       // Stop any currently playing audio
-      if (sound) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-        setSound(null);
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
       }
 
       // Set loading state
@@ -177,22 +173,11 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
         return;
       }
 
-      // Create and play the audio
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: resolvedUrl },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
+      // Play the audio
+      audioPlayer.replace(resolvedUrl);
+      audioPlayer.play();
       setCurrentPlayingId(clipId);
       setLoadingAudioId(null);
-
-      // Set up playback status monitoring
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
-          setCurrentPlayingId(null);
-        }
-      });
 
       console.log('Playing audio:', resolvedUrl);
     } catch (error) {

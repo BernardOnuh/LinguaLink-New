@@ -38,8 +38,21 @@ export const uploadAudioFile = async (
 
     console.log('Storage path:', storagePath);
 
+     // Normalize URI: if content://, copy to cache to obtain a file:// path
+    let sourceUri = fileUri;
+    if (sourceUri?.startsWith('content://')) {
+      const destPath = `${FileSystem.cacheDirectory}upload_${timestamp}_${randomId}.bin`;
+      console.log('Copying content URI to cache:', destPath);
+      await FileSystem.copyAsync({ from: sourceUri, to: destPath });
+      sourceUri = destPath;
+    }
+
+    if (!sourceUri || !(sourceUri.startsWith('file://') || sourceUri.startsWith(FileSystem.cacheDirectory || ''))) {
+      throw new Error('Invalid audio URI');
+    }
+
     // Read the file as base64
-    const base64Data = await FileSystem.readAsStringAsync(fileUri, {
+    const base64Data = await FileSystem.readAsStringAsync(sourceUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
 
