@@ -320,9 +320,6 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>My Library</Text>
-          <TouchableOpacity>
-            <Text style={styles.editButton}>Edit</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Tab Selector */}

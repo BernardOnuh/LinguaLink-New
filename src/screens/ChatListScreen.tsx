@@ -233,15 +233,29 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
+
+      // Get story IDs to check view status
+      const storyIds = (rows || []).map((r: any) => r.id);
       const userIds = Array.from(new Set((rows || []).map((r: any) => r.user_id)));
-      let profilesMap: Record<string, any> = {};
-      if (userIds.length > 0) {
-        const { data: profs } = await supabase
+
+      // Fetch profiles and view status in parallel
+      const [profilesResult, viewsResult] = await Promise.all([
+        userIds.length > 0 ? supabase
           .from('profiles')
           .select('id, full_name, username, primary_language, avatar_url')
-          .in('id', userIds);
-        (profs || []).forEach((p: any) => { profilesMap[p.id] = p; });
-      }
+          .in('id', userIds) : Promise.resolve({ data: [] }),
+        storyIds.length > 0 ? supabase
+          .from('story_views')
+          .select('story_id')
+          .eq('user_id', user.id)
+          .in('story_id', storyIds) : Promise.resolve({ data: [] })
+      ]);
+
+      const profilesMap: Record<string, any> = {};
+      (profilesResult.data || []).forEach((p: any) => { profilesMap[p.id] = p; });
+
+      const viewedStoryIds = new Set((viewsResult.data || []).map((v: any) => v.story_id));
+
       const mapped: Story[] = (rows || []).map((row: any) => {
         const p = profilesMap[row.user_id] || {};
         const name: string = p.full_name || p.username || 'User';
@@ -262,7 +276,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           user: contactUser,
           thumbnail: '🎬',
           timestamp: '',
-          viewed: false,
+          viewed: viewedStoryIds.has(row.id),
           mediaUrl: row.media_url,
         };
       });
@@ -313,6 +327,16 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'stories' }, (payload: any) => {
         const row = payload.old;
         setStories(prev => prev.filter(s => s.id !== row.id));
+      })
+      // Real-time story view updates
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'story_views' }, (payload: any) => {
+        const view = payload.new;
+        if (view.user_id === user?.id) {
+          // User viewed a story - mark it as viewed
+          setStories(prev => prev.map(story =>
+            story.id === view.story_id ? { ...story, viewed: true } : story
+          ));
+        }
       })
       .subscribe();
     return () => { ch.unsubscribe(); };
