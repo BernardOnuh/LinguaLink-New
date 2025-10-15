@@ -15,6 +15,7 @@ import {
   Alert,
   Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 // Update these imports to use the correct types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -40,6 +41,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
 const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { contact, conversationId } = route.params as any;
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -506,7 +508,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         ref={scrollViewRef}
         style={styles.messagesContainer}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.messagesContent}
+        contentContainerStyle={[styles.messagesContent, { paddingBottom: insets.bottom + 12 }]}
       >
         {messages.map(renderMessage)}
         {renderTypingIndicator()}
@@ -515,7 +517,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       {/* Input Area */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.inputContainer}
+        style={[styles.inputContainer, { paddingBottom: (insets.bottom || 8) }]}
       >
         <View style={styles.inputRow}>
           <TouchableOpacity style={styles.attachButton}>
