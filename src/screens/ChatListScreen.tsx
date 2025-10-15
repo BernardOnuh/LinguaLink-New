@@ -41,17 +41,6 @@ interface ChatContact {
   posts?: number;
 }
 
-interface Group {
-  id: string;
-  name: string;
-  description: string;
-  avatar: string;
-  members: number;
-  language: string;
-  lastActivity: string;
-  isPrivate: boolean;
-  unreadCount: number;
-}
 
 interface Story {
   id: string;
@@ -63,37 +52,13 @@ interface Story {
   created_at?: string;
 }
 
-const mockGroups: Group[] = [
-  {
-    id: 'group_1',
-    name: 'Igbo Language Learners',
-    description: 'Learn and practice Igbo together',
-    avatar: '🏫',
-    members: 234,
-    language: 'Igbo',
-    lastActivity: '5m',
-    isPrivate: false,
-    unreadCount: 3,
-  },
-  {
-    id: 'group_2',
-    name: 'Yoruba Cultural Exchange',
-    description: 'Share Yoruba culture and traditions',
-    avatar: '🎭',
-    members: 189,
-    language: 'Yoruba',
-    lastActivity: '1h',
-    isPrivate: false,
-    unreadCount: 1,
-  },
-];
 
 
 
 const ChatListScreen: React.FC<any> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'Chats' | 'Groups' | 'Contacts' | 'Games'>('Chats');
+  const [activeTab, setActiveTab] = useState<'Chats' | 'Contacts' | 'Games'>('Chats');
   const [searchQuery, setSearchQuery] = useState('');
   const [showTranslations, setShowTranslations] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -408,7 +373,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
-              navigation.navigate('CreateGroup');
+              navigation.navigate('Groups');
             }}
           >
             <Ionicons name="people" size={24} color="#10B981" />
@@ -550,86 +515,6 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const renderGroupItem = (group: Group) => (
-    <TouchableOpacity
-      key={group.id}
-      style={styles.groupItem}
-      onPress={() => {
-        // Convert group to contact format for navigation
-        const contactFromGroup: ChatContact = {
-          id: group.id,
-          name: group.name,
-          username: group.name.toLowerCase().replace(/\s+/g, '_'),
-          avatar: group.avatar,
-          language: group.language,
-          lastMessage: group.description,
-          lastMessageTime: group.lastActivity,
-          unreadCount: group.unreadCount,
-          isOnline: true,
-          isFollowing: true,
-          followers: group.members,
-          posts: 0,
-        };
-        navigation.navigate('GroupChat', { contact: contactFromGroup });
-      }}
-    >
-      <View style={styles.groupAvatar}>
-        <Text style={styles.groupAvatarText}>{group.avatar}</Text>
-        {group.isPrivate && (
-          <View style={styles.privateIndicator}>
-            <Ionicons name="lock-closed" size={8} color="#FFFFFF" />
-          </View>
-        )}
-      </View>
-
-      <View style={styles.groupInfo}>
-        <View style={styles.groupHeader}>
-          <Text style={styles.groupName}>{group.name}</Text>
-          <Text style={styles.groupActivity}>{group.lastActivity}</Text>
-        </View>
-        <Text style={styles.groupDescription} numberOfLines={1}>
-          {group.description}
-        </Text>
-        <View style={styles.groupMeta}>
-          <Text style={styles.groupMembers}>{group.members} members</Text>
-          <View style={styles.languageTag}>
-            <Text style={styles.languageText}>{group.language}</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.groupActions}>
-        {group.unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadCount}>{group.unreadCount}</Text>
-          </View>
-        )}
-        <TouchableOpacity
-          style={styles.groupCallButton}
-          onPress={() => {
-            // Convert group to contact format for video call
-            const contactFromGroup: ChatContact = {
-              id: group.id,
-              name: group.name,
-              username: group.name.toLowerCase().replace(/\s+/g, '_'),
-              avatar: group.avatar,
-              language: group.language,
-              lastMessage: group.description,
-              lastMessageTime: group.lastActivity,
-              unreadCount: group.unreadCount,
-              isOnline: true,
-              isFollowing: true,
-              followers: group.members,
-              posts: 0,
-            };
-            navigation.navigate('GroupCall', { contact: contactFromGroup });
-          }}
-        >
-          <Ionicons name="people" size={16} color="#FF8A00" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
 
   const renderGameItem = () => (
     <View style={styles.gamesContainer}>
@@ -679,10 +564,6 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       contact.language.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const filteredGroups = mockGroups.filter(group =>
-      group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      group.language.toLowerCase().includes(searchQuery.toLowerCase())
-    );
 
     switch (activeTab) {
       case 'Chats':
@@ -703,8 +584,6 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           );
         }
         return filteredContacts.map(renderChatItem);
-      case 'Groups':
-        return filteredGroups.map(renderGroupItem);
       case 'Contacts':
         return (
           <View>
@@ -731,6 +610,16 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>LinguaChat</Text>
           <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Groups')}
+            >
+              <Ionicons
+                name="people"
+                size={24}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerButton}
               onPress={() => setShowTranslations(!showTranslations)}
@@ -781,7 +670,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
 
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
-        {['Chats', 'Groups', 'Contacts', 'Games'].map((tab) => (
+        {['Chats', 'Contacts', 'Games'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[

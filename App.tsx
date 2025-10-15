@@ -33,6 +33,7 @@ import ValidationScreen from './src/screens/ValidationScreen';
 // Import new Chat screens
 import ChatListScreen from './src/screens/ChatListScreen';
 import ChatDetailScreen from './src/screens/ChatDetailScreen';
+import GroupsScreen from './src/screens/GroupsScreen';
 import GroupChatScreen from './src/screens/GroupChatScreen';
 import VoiceCallScreen from './src/screens/VoiceCallScreen';
 import VideoCallScreen from './src/screens/VideoCallScreen';
@@ -612,6 +613,13 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
 
         {/* Chat Screens */}
         <Stack.Screen
+          name="Groups"
+          component={GroupsScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
           name="ChatDetail"
           component={ChatDetailScreen}
           options={{
@@ -884,6 +892,7 @@ export default function App() {
         Validation: 'validation',
         Settings: 'settings',
         Rewards: 'rewards',
+        Groups: 'groups',
         ChatDetail: 'chat/:id',
         GroupChat: 'group/:id',
         VoiceCall: 'call/voice/:id',

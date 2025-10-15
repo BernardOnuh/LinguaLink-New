@@ -81,6 +81,7 @@ export type RootStackParamList = {
   ChatDetail: {
     contact: Contact;
   };
+  Groups: undefined;
   VoiceCall: {
     contact: Contact;
   };
