@@ -27,7 +27,8 @@
               "lingualink"
             ]
           }
-        ]
+        ],
+        "NSMicrophoneUsageDescription": "We use the microphone so you can record voice clips."
       }
     },
     "android": {

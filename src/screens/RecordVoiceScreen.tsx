@@ -16,7 +16,7 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
-import { useAudioRecorder } from 'expo-audio';
+import { Audio } from 'expo-av';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -77,9 +77,9 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const [showPromptSelector, setShowPromptSelector] = useState(false);
   const [isLoadingPrompts, setIsLoadingPrompts] = useState(false);
 
-  // Audio recording state
-  const [recording, setRecording] = useState<any>(null);
-  const [recordingStatus, setRecordingStatus] = useState<any>(null);
+  // Audio recording state (expo-av)
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<Audio.RecordingStatus | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
 
   const pulseAnimation = useRef(new Animated.Value(1)).current;
@@ -89,12 +89,11 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const originalClip = route?.params?.originalClip;
   const mode = route?.params?.mode || 'record';
 
-  // Request audio recording permissions
+  // Request audio recording permissions (expo-av)
   useEffect(() => {
     (async () => {
-      // Note: expo-audio permission handling will be different
-      // This is a placeholder - actual implementation depends on expo-audio API
-      setHasPermission(true);
+      const { status } = await Audio.requestPermissionsAsync();
+      setHasPermission(status === 'granted');
     })();
   }, []);
 
@@ -172,16 +171,22 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
     }
 
     if (isRecording) {
-      // Stop recording
+      // Stop recording (expo-av)
       try {
-        if (recording) {
-          // Note: expo-audio recording stop will be different
-          // This is a placeholder - actual implementation depends on expo-audio API
-          const uri = 'placeholder_uri'; // recording.getURI();
-          setAudioUri(uri);
-          setRecording(null);
-          setRecordingStatus(null);
+        if (!recording) {
+          setIsRecording(false);
+          return;
         }
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI();
+        if (!uri) {
+          Alert.alert('Recording Error', 'No audio file URI was returned. Please try recording again.');
+          setIsRecording(false);
+          return;
+        }
+        setAudioUri(uri);
+        setRecording(null);
+        setRecordingStatus(null);
         setIsRecording(false);
         setHasRecorded(true);
         setPhrase(getPromptText());
@@ -199,10 +204,18 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
       }
 
       try {
-        // Note: expo-audio recording start will be different
-        // This is a placeholder - actual implementation depends on expo-audio API
-        const newRecording = { placeholder: true };
+        // Always (re)request permission right before starting
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please grant microphone permission to record audio.');
+          return;
+        }
 
+        // Configure audio mode and start (expo-av)
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const { recording: newRecording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
         setRecording(newRecording);
         setIsRecording(true);
         setRecordingTime(0);
@@ -211,13 +224,13 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
         setPhrase('');
         setTranslation('');
 
-        // Set up status update listener
-        // newRecording.setOnRecordingStatusUpdate((status) => {
-        //   setRecordingStatus(status);
-        //   if (status.isRecording) {
-        //     setRecordingTime(Math.floor(status.durationMillis / 1000));
-        //   }
-        // });
+        // Status updates
+        newRecording.setOnRecordingStatusUpdate((status) => {
+          setRecordingStatus(status);
+          if (status.isRecording) {
+            setRecordingTime(Math.floor((status.durationMillis || 0) / 1000));
+          }
+        });
 
       } catch (error) {
         console.error('Error starting recording:', error);
@@ -267,6 +280,10 @@ const RecordVoiceScreen: React.FC<Props> = ({ navigation, route }) => {
     setUploadProgress('Preparing upload...');
 
     try {
+      // Basic URI validation to avoid unsupported schemes
+      if (!/^file:\/\//.test(audioUri) && !/^content:\/\//.test(audioUri)) {
+        throw new Error('Invalid audio source URI');
+      }
       // Upload audio file to Supabase Storage
       console.log('Uploading audio file to Supabase Storage...');
       setUploadProgress('Uploading audio file...');
