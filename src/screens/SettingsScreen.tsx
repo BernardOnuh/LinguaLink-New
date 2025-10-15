@@ -11,11 +11,20 @@ import {
   Dimensions,
   Switch,
   Alert,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import LanguagePicker from '../components/LanguagePicker';
+import SettingsSection from '../components/SettingsSection';
+import SettingsItem from '../components/SettingsItem';
+import ProfileEditModal from '../components/ProfileEditModal';
+import ChangePasswordModal from '../components/ChangePasswordModal';
+import NotificationToggle from '../components/NotificationToggle';
+import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
@@ -36,7 +45,8 @@ interface Language {
 }
 
 const SettingsScreen: React.FC<Props> = ({ navigation }) => {
-  const { signOut } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { signOut, user } = useAuth();
   const [notificationSettings, setNotificationSettings] = useState({
     likes: true,
     duets: true,
@@ -48,6 +58,17 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     name: 'Yoruba',
     dialect: 'Ekiti Dialect'
   });
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [profileFullName, setProfileFullName] = useState('');
+  const [profileUsername, setProfileUsername] = useState('');
+  const [profileBio, setProfileBio] = useState('');
+  const [profileLocation, setProfileLocation] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -67,53 +88,14 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const SettingsSection: React.FC<{
-    title: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    iconColor: string;
-    children: React.ReactNode;
-  }> = ({ title, icon, iconColor, children }) => (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Ionicons name={icon} size={20} color={iconColor} />
-        <Text style={styles.sectionTitle}>{title}</Text>
-      </View>
-      <View style={styles.sectionContent}>
-        {children}
-      </View>
-    </View>
-  );
-
-  const SettingsItem: React.FC<{
-    title: string;
-    subtitle?: string;
-    onPress?: () => void;
-    showArrow?: boolean;
-    rightContent?: React.ReactNode;
-  }> = ({ title, subtitle, onPress, showArrow = true, rightContent }) => (
-    <TouchableOpacity
-      style={styles.settingsItem}
-      onPress={onPress}
-      disabled={!onPress}
-    >
-      <View style={styles.settingsItemContent}>
-        <Text style={styles.settingsItemTitle}>{title}</Text>
-        {subtitle && (
-          <Text style={styles.settingsItemSubtitle}>{subtitle}</Text>
-        )}
-      </View>
-      {rightContent || (showArrow && onPress && (
-        <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-      ))}
-    </TouchableOpacity>
-  );
+  // moved SettingsSection and SettingsItem into components
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
@@ -121,7 +103,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         {/* Account Section */}
         <SettingsSection
           title="Account"
@@ -130,11 +112,26 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         >
           <SettingsItem
             title="Edit Profile"
-            onPress={() => Alert.alert('Edit Profile', 'Profile editing coming soon!')}
+            onPress={async () => {
+              try {
+                if (!user?.id) { Alert.alert('Error', 'Not signed in'); return; }
+                const { data, error } = await supabase
+                  .from('profiles')
+                  .select('full_name, username, bio, location, primary_language')
+                  .eq('id', user.id)
+                  .maybeSingle();
+                if (error) throw error;
+                setProfileFullName(data?.full_name || '');
+                setProfileUsername(data?.username || '');
+                setProfileBio(data?.bio || '');
+                setProfileLocation(data?.location || '');
+              } catch {}
+              setShowEditProfile(true);
+            }}
           />
           <SettingsItem
             title="Change Password"
-            onPress={() => Alert.alert('Change Password', 'Password change coming soon!')}
+            onPress={() => setShowChangePassword(true)}
           />
           <SettingsItem
             title="Privacy Settings"
@@ -165,50 +162,32 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           icon="notifications-outline"
           iconColor="#8B5CF6"
         >
-          <SettingsItem
+          <NotificationToggle
             title="Likes on my clips"
             subtitle="Get notified when someone likes your voice clips"
-            showArrow={false}
-            rightContent={
-              <Switch
-                value={notificationSettings.likes}
-                onValueChange={(value) =>
-                  setNotificationSettings(prev => ({ ...prev, likes: value }))
-                }
-                trackColor={{ false: '#D1D5DB', true: '#FF8A00' }}
-                thumbColor="#FFFFFF"
-              />
-            }
+            value={notificationSettings.likes}
+            onChange={async (value) => {
+              setNotificationSettings(prev => ({ ...prev, likes: value }));
+              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, likes: value } }).eq('id', user.id); } catch {}
+            }}
           />
-          <SettingsItem
+          <NotificationToggle
             title="Duet replies"
             subtitle="When someone creates a duet response"
-            showArrow={false}
-            rightContent={
-              <Switch
-                value={notificationSettings.duets}
-                onValueChange={(value) =>
-                  setNotificationSettings(prev => ({ ...prev, duets: value }))
-                }
-                trackColor={{ false: '#D1D5DB', true: '#FF8A00' }}
-                thumbColor="#FFFFFF"
-              />
-            }
+            value={notificationSettings.duets}
+            onChange={async (value) => {
+              setNotificationSettings(prev => ({ ...prev, duets: value }));
+              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, duets: value } }).eq('id', user.id); } catch {}
+            }}
           />
-          <SettingsItem
+          <NotificationToggle
             title="Validation requests"
             subtitle="New clips to validate in your languages"
-            showArrow={false}
-            rightContent={
-              <Switch
-                value={notificationSettings.validations}
-                onValueChange={(value) =>
-                  setNotificationSettings(prev => ({ ...prev, validations: value }))
-                }
-                trackColor={{ false: '#D1D5DB', true: '#FF8A00' }}
-                thumbColor="#FFFFFF"
-              />
-            }
+            value={notificationSettings.validations}
+            onChange={async (value) => {
+              setNotificationSettings(prev => ({ ...prev, validations: value }));
+              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, validations: value } }).eq('id', user.id); } catch {}
+            }}
           />
         </SettingsSection>
 
@@ -255,8 +234,80 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
       <LanguagePicker
         visible={showLanguagePicker}
         onClose={() => setShowLanguagePicker(false)}
-        onSelect={(language) => setPrimaryLanguage(language)}
+        onSelect={async (language) => {
+          setPrimaryLanguage(language);
+          try { if (user?.id) await supabase.from('profiles').update({ primary_language: language.dialect ? `${language.name} / ${language.dialect}` : language.name, updated_at: new Date().toISOString() }).eq('id', user.id); } catch {}
+        }}
         selectedLanguage={primaryLanguage}
+      />
+
+      <ProfileEditModal
+        visible={showEditProfile}
+        fullName={profileFullName}
+        username={profileUsername}
+        bio={profileBio}
+        location={profileLocation}
+        loading={savingProfile}
+        onChange={(f) => {
+          if (f.fullName !== undefined) setProfileFullName(f.fullName);
+          if (f.username !== undefined) setProfileUsername(f.username);
+          if (f.bio !== undefined) setProfileBio(f.bio);
+          if (f.location !== undefined) setProfileLocation(f.location);
+        }}
+        onClose={() => setShowEditProfile(false)}
+        onSave={async () => {
+          try {
+            if (!user?.id) return;
+            setSavingProfile(true);
+            const { error } = await supabase
+              .from('profiles')
+              .update({
+                full_name: profileFullName,
+                username: profileUsername,
+                bio: profileBio || null,
+                location: profileLocation || null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', user.id);
+            if (error) throw error;
+            Alert.alert('Saved', 'Profile updated successfully');
+            setShowEditProfile(false);
+          } catch (e) {
+            Alert.alert('Error', 'Failed to save profile');
+          } finally { setSavingProfile(false); }
+        }}
+      />
+
+      <ChangePasswordModal
+        visible={showChangePassword}
+        newPassword={newPassword}
+        confirmPassword={confirmPassword}
+        loading={savingPassword}
+        onChange={(f) => {
+          if (f.newPassword !== undefined) setNewPassword(f.newPassword);
+          if (f.confirmPassword !== undefined) setConfirmPassword(f.confirmPassword);
+        }}
+        onClose={() => setShowChangePassword(false)}
+        onSave={async () => {
+          try {
+            if (!newPassword || newPassword.length < 6) {
+              Alert.alert('Invalid', 'Password must be at least 6 characters');
+              return;
+            }
+            if (newPassword !== confirmPassword) {
+              Alert.alert('Mismatch', 'Passwords do not match');
+              return;
+            }
+            setSavingPassword(true);
+            const { error } = await supabase.auth.updateUser({ password: newPassword });
+            if (error) throw error;
+            Alert.alert('Success', 'Password updated');
+            setShowChangePassword(false);
+            setNewPassword(''); setConfirmPassword('');
+          } catch (e) {
+            Alert.alert('Error', 'Failed to update password');
+          } finally { setSavingPassword(false); }
+        }}
       />
     </SafeAreaView>
   );
