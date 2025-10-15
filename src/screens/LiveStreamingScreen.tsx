@@ -19,6 +19,7 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useAudioPlayer } from 'expo-audio';
 import io from 'socket.io-client';
 import { supabase } from '../supabaseClient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -87,6 +88,7 @@ const gifts: Gift[] = [
 ];
 
 const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const [isLive, setIsLive] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -516,7 +518,7 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
       {/* Stream Header */}
-      <View style={styles.streamHeader}>
+      <View style={[styles.streamHeader, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -633,7 +635,7 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
       </View>
 
       {/* Bottom Controls */}
-      <View style={styles.bottomControls}>
+      <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 12 }]}>
         {/* Comment Input */}
         <View style={styles.commentInputContainer}>
           <TextInput

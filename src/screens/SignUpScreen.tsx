@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import LanguagePicker from '../components/LanguagePicker';
@@ -47,6 +48,7 @@ interface Language {
 }
 
 const SignUpScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { signUp, signInWithGoogle, loading } = useAuth();
   const [user, setUser] = useState<User>({
     fullName: '',
@@ -186,7 +188,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         {/* Header */}
-        <View style={styles.formHeader}>
+        <View style={[styles.formHeader, { paddingTop: insets.top + 16 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -196,7 +198,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 
         <ScrollView
           style={styles.formContent}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -381,7 +383,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: width * 0.05,
-    paddingTop: height * 0.06,
     paddingBottom: height * 0.02,
   },
   formTitle: {

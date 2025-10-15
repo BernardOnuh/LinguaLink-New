@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import { SafeAreaView, View, StyleSheet, Dimensions, TouchableOpacity, Text, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -16,6 +17,7 @@ const isVideoUrl = (url?: string) => {
 
 const StoryViewScreen: React.FC<any> = ({ navigation, route }) => {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const story = route.params?.story as { id: string; user: { name: string }; thumbnail: string; timestamp?: string; viewed?: boolean; mediaUrl?: string; media_url?: string } | undefined;
   const mediaUrl = (story as any)?.mediaUrl || (story as any)?.media_url || '';
   const videoPlayer = useVideoPlayer(mediaUrl);
@@ -32,7 +34,7 @@ const StoryViewScreen: React.FC<any> = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="close" size={28} color="#FFFFFF" />
         </TouchableOpacity>
@@ -63,7 +65,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
   },
   title: { color: '#FFF', fontWeight: '600', maxWidth: width * 0.7 },
   mediaBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },

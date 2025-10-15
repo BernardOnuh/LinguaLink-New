@@ -15,6 +15,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -147,6 +148,7 @@ const mockLiveRooms: LiveRoom[] = [
 ];
 
 const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'Live' | 'Create' | 'Trending'>('Live');
   const [selectedRoom, setSelectedRoom] = useState<LiveRoom | null>(null);
   const [isInGame, setIsInGame] = useState(false);
@@ -345,7 +347,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
           <StatusBar barStyle="light-content" backgroundColor="#1F2937" />
 
           {/* Game Header */}
-          <View style={styles.gameHeader}>
+          <View style={[styles.gameHeader, { paddingTop: insets.top + 12 }]}>
             <TouchableOpacity onPress={leaveRoom}>
               <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -485,7 +487,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="#1F2937" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -574,7 +576,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: width * 0.05,
-    paddingVertical: 16,
+    paddingBottom: 16,
     backgroundColor: '#1F2937',
   },
   headerTitle: {
@@ -863,7 +865,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     backgroundColor: '#374151',
   },
   gameInfo: {

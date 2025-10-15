@@ -13,6 +13,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
 const { width, height } = Dimensions.get('window');
@@ -221,20 +222,21 @@ const mockRewardItems: RewardItem[] = [
 ];
 
 const RewardsScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'Leaderboard' | 'Wallet' | 'Store'>('Leaderboard');
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendAmount, setSendAmount] = useState('');
   const [recipientUsername, setRecipientUsername] = useState('');
   const [selectedTimeframe, setSelectedTimeframe] = useState<'Daily' | 'Weekly' | 'Monthly' | 'All Time'>('All Time');
-  
+
   const currentUserPoints = 1250;
   const currentUserRank = 5;
   const totalEarned = 2450;
   const totalSpent = 1200;
 
   const renderContributor = (contributor: Contributor, index: number) => (
-    <TouchableOpacity 
-      key={contributor.id} 
+    <TouchableOpacity
+      key={contributor.id}
       style={[
         styles.contributorCard,
         contributor.isCurrentUser && styles.currentUserCard
@@ -252,11 +254,11 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
           ]}>{contributor.rank}</Text>
         )}
       </View>
-      
+
       <View style={styles.contributorAvatar}>
         <Text style={styles.avatarText}>{contributor.avatar}</Text>
       </View>
-      
+
       <View style={styles.contributorInfo}>
         <View style={styles.nameRow}>
           <Text style={[
@@ -276,7 +278,7 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
           {contributor.contributions} contributions • {contributor.badge}
         </Text>
       </View>
-      
+
       <View style={styles.contributorPoints}>
         <Text style={[
           styles.pointsNumber,
@@ -293,10 +295,10 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
         styles.transactionIcon,
         { backgroundColor: transaction.type === 'earned' || transaction.type === 'received' ? '#ECFDF5' : '#FEF2F2' }
       ]}>
-        <Ionicons 
-          name={transaction.icon as any} 
-          size={20} 
-          color={transaction.type === 'earned' || transaction.type === 'received' ? '#10B981' : '#EF4444'} 
+        <Ionicons
+          name={transaction.icon as any}
+          size={20}
+          color={transaction.type === 'earned' || transaction.type === 'received' ? '#10B981' : '#EF4444'}
         />
       </View>
       <View style={styles.transactionInfo}>
@@ -313,8 +315,8 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   const renderRewardItem = (item: RewardItem) => (
-    <TouchableOpacity 
-      key={item.id} 
+    <TouchableOpacity
+      key={item.id}
       style={[
         styles.rewardCard,
         currentUserPoints < item.cost && styles.rewardCardDisabled
@@ -346,9 +348,9 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      
+
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
@@ -358,7 +360,7 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
             <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-        
+
         {/* User Points Card */}
         <View style={styles.userPointsCard}>
           <View style={styles.pointsMainSection}>
@@ -366,7 +368,7 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.pointsValue}>{currentUserPoints.toLocaleString()}</Text>
             <Text style={styles.pointsSubtext}>LinguaCoins</Text>
           </View>
-          
+
           <View style={styles.pointsStatsRow}>
             <View style={styles.pointsStat}>
               <Ionicons name="trending-up" size={16} color="#10B981" />
@@ -388,7 +390,7 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           <View style={styles.quickActions}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.quickActionButton}
               onPress={() => setShowSendModal(true)}
             >
@@ -429,12 +431,16 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         {activeTab === 'Leaderboard' && (
           <View style={styles.leaderboardSection}>
             {/* Timeframe Selector */}
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.timeframeSelector}
             >
@@ -608,7 +614,7 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
                 </Text>
               </View>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[
                   styles.sendButton,
                   (!sendAmount || !recipientUsername) && styles.sendButtonDisabled
@@ -632,7 +638,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FF8A00',
-    paddingTop: height * 0.02,
     paddingBottom: height * 0.02,
     paddingHorizontal: width * 0.05,
   },
