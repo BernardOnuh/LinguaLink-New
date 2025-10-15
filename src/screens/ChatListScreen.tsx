@@ -60,6 +60,7 @@ interface Story {
   timestamp: string;
   viewed: boolean;
   mediaUrl?: string;
+  created_at?: string;
 }
 
 const mockGroups: Group[] = [
@@ -278,9 +279,23 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           timestamp: '',
           viewed: viewedStoryIds.has(row.id),
           mediaUrl: row.media_url,
+          created_at: row.created_at, // Add created_at for sorting
         };
       });
-      setStories(mapped);
+
+      // Sort stories: unviewed first (newest first), then viewed (newest first)
+      const sortedStories = mapped.sort((a, b) => {
+        // First sort by viewed status (unviewed first)
+        if (a.viewed !== b.viewed) {
+          return a.viewed ? 1 : -1;
+        }
+        // Then sort by creation date (newest first) within each group
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      });
+
+      setStories(sortedStories);
     } catch (e) {
       console.log('fetchStories error', e);
     }
@@ -310,7 +325,27 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
                 unreadCount: 0,
                 isOnline: false,
               };
-              setStories(prev => [{ id: row.id, user: contactUser, thumbnail: '🎬', timestamp: '', viewed: false, mediaUrl: row.media_url }, ...prev]);
+              setStories(prev => {
+                const newStory = {
+                  id: row.id,
+                  user: contactUser,
+                  thumbnail: '🎬',
+                  timestamp: '',
+                  viewed: false,
+                  mediaUrl: row.media_url,
+                  created_at: row.created_at
+                };
+                const updated = [newStory, ...prev];
+                // Re-sort to maintain unviewed first order
+                return updated.sort((a, b) => {
+                  if (a.viewed !== b.viewed) {
+                    return a.viewed ? 1 : -1;
+                  }
+                  const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+                  const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+                  return bTime - aTime;
+                });
+              });
             });
         }
       })
@@ -332,10 +367,22 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'story_views' }, (payload: any) => {
         const view = payload.new;
         if (view.user_id === user?.id) {
-          // User viewed a story - mark it as viewed
-          setStories(prev => prev.map(story =>
-            story.id === view.story_id ? { ...story, viewed: true } : story
-          ));
+          // User viewed a story - mark it as viewed and re-sort
+          setStories(prev => {
+            const updated = prev.map(story =>
+              story.id === view.story_id ? { ...story, viewed: true } : story
+            );
+            // Re-sort: unviewed first (newest first), then viewed (newest first)
+            return updated.sort((a, b) => {
+              if (a.viewed !== b.viewed) {
+                return a.viewed ? 1 : -1;
+              }
+              // Sort by creation date within each group
+              const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+              const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+              return bTime - aTime;
+            });
+          });
         }
       })
       .subscribe();
