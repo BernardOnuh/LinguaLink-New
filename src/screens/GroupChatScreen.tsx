@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Audio } from 'expo-av';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
@@ -34,7 +35,6 @@ interface Message {
   created_at: string;
   updated_at?: string;
   media_url?: string;
-  payload?: any;
   // UI-specific fields (computed/derived)
   senderName?: string;
   senderAvatar?: string;
@@ -70,6 +70,13 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const [newMessage, setNewMessage] = useState('');
   const [showTranslations, setShowTranslations] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingUri, setRecordingUri] = useState<string | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingTimer, setRecordingTimer] = useState<NodeJS.Timeout | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -78,6 +85,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const dot1Anim = useRef(new Animated.Value(0.3)).current;
   const dot2Anim = useRef(new Animated.Value(0.3)).current;
   const dot3Anim = useRef(new Animated.Value(0.3)).current;
+  const recordingDotAnim = useRef(new Animated.Value(1)).current;
 
   // Fetch messages for this group
   const fetchMessages = useCallback(async () => {
@@ -128,8 +136,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           senderAvatar: '👤',
           isTranslationVisible: false,
           audio_url: msg.type === 'voice' ? msg.media_url : undefined,
-          duration: msg.type === 'voice' && msg.payload?.duration ? msg.payload.duration : undefined,
-          translated_content: msg.payload?.translated_content || undefined,
+          duration: msg.type === 'voice' ? 0 : undefined, // Default duration for voice messages
+          translated_content: undefined, // No translation data stored in DB
         }));
         setMessages(transformedMessages);
         return;
@@ -153,8 +161,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isTranslationVisible: false,
           // For voice messages, derive audio_url and duration from media_url and payload
           audio_url: msg.type === 'voice' ? msg.media_url : undefined,
-          duration: msg.type === 'voice' && msg.payload?.duration ? msg.payload.duration : undefined,
-          translated_content: msg.payload?.translated_content || undefined,
+          duration: msg.type === 'voice' ? 0 : undefined, // Default duration for voice messages
+          translated_content: undefined, // No translation data stored in DB
         };
       });
 
@@ -293,13 +301,12 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               created_at: payload.new.created_at,
               updated_at: payload.new.updated_at,
               media_url: payload.new.media_url,
-              payload: payload.new.payload,
               senderName: profileData?.full_name || 'Unknown User',
               senderAvatar: profileData?.avatar_url ? '👤' : '👤',
               isTranslationVisible: false,
               audio_url: payload.new.type === 'voice' ? payload.new.media_url : undefined,
-              duration: payload.new.type === 'voice' && payload.new.payload?.duration ? payload.new.payload.duration : undefined,
-              translated_content: payload.new.payload?.translated_content || undefined,
+              duration: payload.new.type === 'voice' ? 0 : undefined,
+              translated_content: undefined,
             };
 
             // Add the new message to the state
@@ -486,6 +493,18 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [typingUsers.length, dot1Anim, dot2Anim, dot3Anim]);
 
+  // Cleanup audio resources
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+      if (recording) {
+        recording.stopAndUnloadAsync();
+      }
+    };
+  }, [sound, recording]);
+
   const sendMessage = async () => {
     if (!newMessage.trim() || !user?.id || isSending) return;
 
@@ -509,12 +528,12 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     setMessages(prev => [...prev, optimisticMessage]);
 
     // Clear input immediately
-    setNewMessage('');
+      setNewMessage('');
 
     // Scroll to bottom immediately
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
 
     try {
       // Send message to database
@@ -571,54 +590,276 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     ));
   };
 
-  const startVoiceRecording = () => {
-    setIsRecording(true);
-    Alert.alert(
-      'Voice Recording',
-      'Recording started... Your message will be translated for all group members!',
-      [
-        {
-          text: 'Stop Recording',
-          onPress: stopVoiceRecording,
-        }
-      ]
-    );
+  const startVoiceRecording = async () => {
+    try {
+      // Request audio recording permissions
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant microphone permission to record voice messages.');
+        return;
+      }
+
+      // Configure audio mode for recording
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      // Start recording
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+      setRecording(newRecording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+      console.log('Recording started');
+
+      // Start recording duration timer
+      const timer = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+      setRecordingTimer(timer);
+
+      // Start pulsing animation for recording dot
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingDotAnim, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(recordingDotAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulseAnimation.start();
+
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      Alert.alert('Recording Error', 'Failed to start recording. Please try again.');
+    }
   };
 
-  const stopVoiceRecording = () => {
-    setIsRecording(false);
+  const stopVoiceRecording = async () => {
+    if (!recording) return;
 
-    const voiceMessage: Message = {
-      id: Date.now().toString(),
-      sender_id: user?.id || '',
-      conversation_id: group.id,
-      type: 'voice',
-      created_at: new Date().toISOString(),
-      senderName: 'You',
-      senderAvatar: '👤',
-      isTranslationVisible: false,
-      media_url: 'mock-audio-url', // Mock audio URL
-      payload: {
-        duration: 8,
-        translated_content: `[Auto-translated to ${group.language}]`
-      },
-      duration: 8, // 8 seconds as a number
-      translated_content: `[Auto-translated to ${group.language}]`,
-    };
+    try {
+      setIsRecording(false);
 
-    setMessages([...messages, voiceMessage]);
-    setTypingUsers(['user2']); // Simulate response
+      // Clear recording timer
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        setRecordingTimer(null);
+      }
 
+      // Stop recording
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+
+      if (!uri) {
+        Alert.alert('Recording Error', 'Failed to save recording. Please try again.');
+        return;
+      }
+
+      setRecordingUri(uri);
+      console.log('Recording stopped and saved to:', uri);
+
+      // Upload the audio file to Supabase Storage
+      await uploadAndSendVoiceMessage(uri);
+
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      Alert.alert('Recording Error', 'Failed to save recording. Please try again.');
+    } finally {
+      setRecording(null);
+      setRecordingUri(null);
+    }
+  };
+
+  const cancelRecording = async () => {
+    if (!recording) return;
+
+    try {
+      // Clear recording timer
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        setRecordingTimer(null);
+      }
+
+      // Stop and discard recording
+      await recording.stopAndUnloadAsync();
+
+      setIsRecording(false);
+      setRecordingDuration(0);
+      setRecording(null);
+      setRecordingUri(null);
+
+      console.log('Recording cancelled');
+    } catch (error) {
+      console.error('Failed to cancel recording:', error);
+    }
+  };
+
+  const uploadAndSendVoiceMessage = async (audioUri: string) => {
+    try {
+      setIsSending(true);
+
+      // Create a unique filename for the audio file
+      const fileName = `voice-${user?.id}-${Date.now()}.m4a`;
+      const filePath = `voice-messages/${fileName}`;
+
+      console.log('Uploading file:', fileName, 'from URI:', audioUri);
+
+      // Read the audio file using React Native's file system approach
+      const response = await fetch(audioUri);
+      const arrayBuffer = await response.arrayBuffer();
+
+      console.log('File size:', arrayBuffer.byteLength, 'bytes');
+
+      // Upload to Supabase Storage using ArrayBuffer
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('voice-messages')
+        .upload(filePath, arrayBuffer, {
+          contentType: 'audio/m4a',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Upload error details:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Upload successful:', uploadData);
+
+      // Get the public URL
+      const { data: urlData } = supabase.storage
+        .from('voice-messages')
+        .getPublicUrl(filePath);
+
+      // Create optimistic voice message
+      const voiceMessage: Message = {
+        id: `temp-${Date.now()}`,
+        sender_id: user?.id || '',
+        conversation_id: group.id,
+        type: 'voice',
+        created_at: new Date().toISOString(),
+        media_url: urlData.publicUrl,
+        duration: 0,
+        translated_content: `[Auto-translated to ${group.language}]`,
+        senderName: 'You',
+        senderAvatar: '👤',
+        isTranslationVisible: false,
+        audio_url: urlData.publicUrl,
+      };
+
+      // Add optimistic message
+      setMessages(prev => [...prev, voiceMessage]);
+
+      // Scroll to bottom
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
+
+      // Send to database
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: group.id,
+          sender_id: user?.id,
+          type: 'voice',
+          media_url: urlData.publicUrl,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error sending voice message:', error);
+
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => msg.id !== voiceMessage.id));
+
+        Alert.alert('Error', 'Failed to send voice message. Please try again.');
+        return;
+      }
+
+      // Replace optimistic message with real message
+      setMessages(prev => prev.map(msg =>
+        msg.id === voiceMessage.id
+          ? {
+              ...data,
+              senderName: 'You',
+              senderAvatar: '👤',
+              isTranslationVisible: false,
+              audio_url: data.media_url,
+              duration: 0,
+              translated_content: `[Auto-translated to ${group.language}]`,
+            } as Message
+          : msg
+      ));
+
+      console.log('Voice message sent successfully');
+
+    } catch (error) {
+      console.error('Error in uploadAndSendVoiceMessage:', error);
+      Alert.alert('Error', 'Failed to send voice message. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const playVoiceMessage = (messageId: string) => {
-    Alert.alert(
-      'Playing Voice Message',
-      'Voice message would play here with real-time translation overlay for all languages!'
-    );
+  const playVoiceMessage = async (messageId: string) => {
+    try {
+      // Stop any currently playing audio
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+      }
+
+      // If clicking the same message that's playing, stop it
+      if (currentPlayingId === messageId) {
+        setCurrentPlayingId(null);
+        return;
+      }
+
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.audio_url) {
+        Alert.alert('Error', 'Audio file not found.');
+        return;
+      }
+
+      setIsLoadingAudio(true);
+      setCurrentPlayingId(messageId);
+
+      // Create and load the sound
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: message.audio_url },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
+
+      // Set up playback status listener
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setCurrentPlayingId(null);
+          setSound(null);
+        }
+      });
+
+      console.log('Playing voice message:', message.audio_url);
+
+    } catch (error) {
+      console.error('Error playing voice message:', error);
+      Alert.alert('Error', 'Failed to play voice message.');
+      setCurrentPlayingId(null);
+      setSound(null);
+    } finally {
+      setIsLoadingAudio(false);
+    }
   };
 
   const renderMessage = (message: Message) => {
@@ -652,18 +893,26 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             <TouchableOpacity
               style={styles.voiceMessageContent}
               onPress={() => playVoiceMessage(message.id)}
+              disabled={isLoadingAudio && currentPlayingId === message.id}
             >
+              {isLoadingAudio && currentPlayingId === message.id ? (
+                <ActivityIndicator
+                  size="small"
+                  color={isMe ? "#FFFFFF" : "#FF8A00"}
+                />
+              ) : (
               <Ionicons
-                name="play-circle"
+                  name={currentPlayingId === message.id ? "pause-circle" : "play-circle"}
                 size={32}
                 color={isMe ? "#FFFFFF" : "#FF8A00"}
               />
+              )}
               <View style={styles.voiceMessageInfo}>
                 <Text style={[
                   styles.voiceMessageText,
                   isMe ? styles.myMessageText : styles.theirMessageText
                 ]}>
-                  Voice Message
+                  {currentPlayingId === message.id ? 'Playing...' : 'Voice Message'}
                 </Text>
                 <Text style={[
                   styles.voiceMessageDuration,
@@ -744,29 +993,6 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Translation Toggle */}
-      <View style={[styles.translationToggle, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity
-          style={styles.translationButton}
-          onPress={() => setShowTranslations(!showTranslations)}
-        >
-          <Ionicons
-            name={showTranslations ? "language" : "language-outline"}
-            size={16}
-            color="#10B981"
-          />
-          <Text style={styles.translationButtonText}>
-            {showTranslations ? 'Hide Translations' : 'Show Translations'}
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.languageIndicator}>
-          <Text style={styles.languageIndicatorText}>
-            Multi-language • {group.language}
-          </Text>
-        </View>
-      </View>
-
       {/* Messages */}
       <ScrollView
         ref={scrollViewRef}
@@ -781,8 +1007,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         ) : (
           <>
-            {messages.map(renderMessage)}
-            {renderTypingIndicator()}
+        {messages.map(renderMessage)}
+        {renderTypingIndicator()}
           </>
         )}
       </ScrollView>
@@ -792,61 +1018,117 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.inputContainer, { paddingBottom: insets.bottom + 12 }]}
       >
-        <View style={styles.inputRow}>
-          <TouchableOpacity style={styles.attachButton}>
-            <Ionicons name="add" size={24} color="#999" />
-          </TouchableOpacity>
-
-          <View style={styles.textInputContainer}>
-            <TextInput
-              style={styles.textInput}
-              placeholder={`Type in your language... (translates to ${group.language} for group)`}
-              value={newMessage}
-              onChangeText={setNewMessage}
-              multiline
-              maxLength={500}
-              placeholderTextColor="#999"
-            />
-            {newMessage.length > 0 && (
-              <Text style={styles.characterCount}>
-                {newMessage.length}/500
+        {isRecording ? (
+          // Recording UI
+          <View style={styles.recordingContainer}>
+            <View style={styles.recordingHeader}>
+              <View style={styles.recordingIndicator}>
+                <Animated.View
+                  style={[
+                    styles.recordingDot,
+                    { opacity: recordingDotAnim }
+                  ]}
+                />
+                <Text style={styles.recordingText}>Recording...</Text>
+              </View>
+              <Text style={styles.recordingDuration}>
+                {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
               </Text>
-            )}
+            </View>
+
+            <View style={styles.recordingWaveform}>
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((bar) => (
+                <Animated.View
+                  key={bar}
+                  style={[
+                    styles.waveformBar,
+                    {
+                      height: Math.random() * 30 + 10,
+                      backgroundColor: '#FF8A00',
+                    }
+                  ]}
+                />
+              ))}
+            </View>
+
+            <View style={styles.recordingActions}>
+              <TouchableOpacity
+                style={styles.cancelRecordingButton}
+                onPress={cancelRecording}
+              >
+                <Ionicons name="close" size={24} color="#FFFFFF" />
+                <Text style={styles.cancelRecordingText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.stopRecordingButton}
+                onPress={stopVoiceRecording}
+              >
+                <Ionicons name="stop" size={24} color="#FFFFFF" />
+                <Text style={styles.stopRecordingText}>Send</Text>
+              </TouchableOpacity>
+            </View>
           </View>
+        ) : (
+          // Normal Input UI
+          <>
+            <View style={styles.inputRow}>
+              <TouchableOpacity style={styles.attachButton}>
+                <Ionicons name="add" size={24} color="#999" />
+              </TouchableOpacity>
 
-          {newMessage.trim() ? (
-            <TouchableOpacity
-              style={[styles.sendButton, isSending && styles.sendingButton]}
-              onPress={sendMessage}
-              disabled={isSending}
-            >
-              {isSending ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+              <View style={styles.textInputContainer}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={`Type in your language... (translates to ${group.language} for group)`}
+                  value={newMessage}
+                  onChangeText={setNewMessage}
+                  multiline
+                  maxLength={500}
+                  placeholderTextColor="#999"
+                />
+                {newMessage.length > 0 && (
+                  <Text style={styles.characterCount}>
+                    {newMessage.length}/500
+                  </Text>
+                )}
+              </View>
+
+              {newMessage.trim() ? (
+                <TouchableOpacity
+                  style={[styles.sendButton, isSending && styles.sendingButton]}
+                  onPress={sendMessage}
+                  disabled={isSending}
+                >
+                  {isSending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                  <Ionicons name="send" size={20} color="#FFFFFF" />
+                  )}
+                </TouchableOpacity>
               ) : (
-                <Ionicons name="send" size={20} color="#FFFFFF" />
+                <TouchableOpacity
+                  style={styles.voiceButton}
+                  onPressIn={startVoiceRecording}
+                  onPressOut={stopVoiceRecording}
+                >
+                  <Ionicons
+                    name="mic"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.voiceButton, isRecording && styles.recordingButton]}
-              onPressIn={startVoiceRecording}
-              onPressOut={stopVoiceRecording}
-            >
-              <Ionicons
-                name={isRecording ? "stop" : "mic"}
-                size={20}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
-          )}
-        </View>
+            </View>
 
-        <View style={styles.inputHint}>
-          <Ionicons name="information-circle" size={12} color="#10B981" />
-          <Text style={styles.inputHintText}>
-            Messages are translated for all {group.members} group members
-          </Text>
-        </View>
+            <View style={styles.inputHint}>
+              <Ionicons name="information-circle" size={12} color="#10B981" />
+              <Text style={styles.inputHintText}>
+                Messages are translated for all {group.members} group members
+              </Text>
+            </View>
+          </>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1158,6 +1440,83 @@ const styles = StyleSheet.create({
   },
   sendingButton: {
     opacity: 0.7,
+  },
+
+  // Recording UI Styles
+  recordingContainer: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  recordingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#FF4444',
+    marginRight: 8,
+  },
+  recordingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  recordingDuration: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FF8A00',
+  },
+  recordingWaveform: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    height: 60,
+    marginBottom: 20,
+  },
+  recordingActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  cancelRecordingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 120,
+    justifyContent: 'center',
+  },
+  cancelRecordingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  stopRecordingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 120,
+    justifyContent: 'center',
+  },
+  stopRecordingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
 
