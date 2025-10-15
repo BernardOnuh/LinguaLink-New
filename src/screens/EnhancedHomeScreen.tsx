@@ -17,7 +17,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer } from 'expo-audio';
+import { Audio } from 'expo-av';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { getPlayableAudioUrl } from '../utils/storage';
@@ -175,9 +175,9 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [showMoreOptions, setShowMoreOptions] = useState<string | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
-  const audioPlayer = useAudioPlayer();
-  const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
   const { user } = useAuth();
@@ -422,11 +422,11 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   // Cleanup audio when component unmounts
   useEffect(() => {
     return () => {
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
+      if (sound) {
+        sound.unloadAsync();
       }
     };
-  }, [audioPlayer]);
+  }, [sound]);
 
   // Check follow status for current user
   useEffect(() => {
@@ -752,7 +752,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     Alert.alert('Reposted!', 'Post shared to your profile');
   };
 
-    const handleAudioPlay = async (postId: string, audioUrl?: string, phrase?: string) => {
+  const handleAudioPlay = async (postId: string, audioUrl?: string, phrase?: string) => {
     if (!audioUrl) {
       Alert.alert('No Audio', 'This post does not have an audio file');
       return;
@@ -760,38 +760,50 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
 
     try {
       // If this post is already playing, stop it
-      if (currentPlayingId === postId && audioPlayer.playing) {
-        audioPlayer.pause();
+      if (currentPlayingId === postId && sound) {
+        await sound.stopAsync();
         setCurrentPlayingId(null);
         return;
       }
 
       // Stop any currently playing audio
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
       }
 
-      // Set loading state
-      setLoadingAudioId(postId);
+      setIsLoadingAudio(postId);
 
       // Get playable URL
       const resolvedUrl = await getPlayableAudioUrl(audioUrl);
       if (!resolvedUrl) {
-        setLoadingAudioId(null);
+        setIsLoadingAudio(null);
         Alert.alert('Error', 'Failed to load audio file');
         return;
       }
 
-      // Load and play the audio
-      audioPlayer.replace(resolvedUrl);
-      await audioPlayer.play();
+      // Create and play the audio
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: resolvedUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
       setCurrentPlayingId(postId);
-      setLoadingAudioId(null);
+      setIsLoadingAudio(null);
+
+      // Set up cleanup when audio finishes
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setCurrentPlayingId(null);
+          setSound(null);
+        }
+      });
 
       console.log('Playing audio:', resolvedUrl);
     } catch (error) {
       console.error('Error playing audio:', error);
-      setLoadingAudioId(null);
+      setIsLoadingAudio(null);
       Alert.alert('Error', 'Failed to play audio file');
     }
   };
@@ -1290,7 +1302,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
                 onPress={() => handleAudioPlay(post.id, post.content.audioUrl, post.content.phrase)}
                 disabled={!post.content.audioUrl}
               >
-                {loadingAudioId === post.id ? (
+                {isLoadingAudio === post.id ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : currentPlayingId === post.id ? (
                   <Ionicons

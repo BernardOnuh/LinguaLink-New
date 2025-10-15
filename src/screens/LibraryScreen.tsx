@@ -14,7 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer } from 'expo-audio';
+import { Audio } from 'expo-av';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -80,9 +80,9 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>([]);
   const [videoClips, setVideoClips] = useState<VideoClip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
-  const audioPlayer = useAudioPlayer();
-  const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
   const { user } = useAuth();
 
   // Fetch user's voice clips
@@ -139,11 +139,11 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
   // Cleanup audio when component unmounts
   useEffect(() => {
     return () => {
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
+      if (sound) {
+        sound.unloadAsync();
       }
     };
-  }, [audioPlayer]);
+  }, [sound]);
 
   const handleAudioPlay = async (clipId: string, audioUrl?: string) => {
     if (!audioUrl) {
@@ -153,38 +153,50 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       // If this clip is already playing, stop it
-      if (currentPlayingId === clipId && audioPlayer.playing) {
-        audioPlayer.pause();
+      if (currentPlayingId === clipId && sound) {
+        await sound.stopAsync();
         setCurrentPlayingId(null);
         return;
       }
 
       // Stop any currently playing audio
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
       }
 
-      // Set loading state
-      setLoadingAudioId(clipId);
+      setIsLoadingAudio(clipId);
 
       // Get playable URL
       const resolvedUrl = await getPlayableAudioUrl(audioUrl);
       if (!resolvedUrl) {
-        setLoadingAudioId(null);
+        setIsLoadingAudio(null);
         Alert.alert('Error', 'Failed to load audio file');
         return;
       }
 
-      // Play the audio
-      audioPlayer.replace(resolvedUrl);
-      audioPlayer.play();
+      // Create and play the audio
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: resolvedUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
       setCurrentPlayingId(clipId);
-      setLoadingAudioId(null);
+      setIsLoadingAudio(null);
+
+      // Set up cleanup when audio finishes
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setCurrentPlayingId(null);
+          setSound(null);
+        }
+      });
 
       console.log('Playing audio:', resolvedUrl);
     } catch (error) {
       console.error('Error playing audio:', error);
-      setLoadingAudioId(null);
+      setIsLoadingAudio(null);
       Alert.alert('Error', 'Failed to play audio file');
     }
   };
@@ -282,7 +294,7 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
             style={styles.playButton}
             onPress={() => handleAudioPlay(clip.id, clip.audio_url)}
           >
-            {loadingAudioId === clip.id ? (
+            {isLoadingAudio === clip.id ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : currentPlayingId === clip.id ? (
               <Ionicons name="pause" size={20} color="#FFFFFF" />
@@ -320,9 +332,6 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>My Library</Text>
-          <TouchableOpacity>
-            <Text style={styles.editButton}>Edit</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Tab Selector */}

@@ -43,6 +43,7 @@ export interface Story {
   thumbnail: string;
   timestamp: string;
   viewed: boolean;
+  created_at?: string; // Optional for sorting
 }
 
 // Define navigation parameter lists
@@ -80,6 +81,7 @@ export type RootStackParamList = {
   ChatDetail: {
     contact: Contact;
   };
+  Groups: undefined;
   VoiceCall: {
     contact: Contact;
   };
