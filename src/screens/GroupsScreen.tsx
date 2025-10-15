@@ -10,8 +10,6 @@ import {
   StatusBar,
   Dimensions,
   TextInput,
-  Modal,
-  FlatList,
   Alert,
   RefreshControl,
 } from 'react-native';
@@ -22,6 +20,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CreateGroupModal from '../components/CreateGroupModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -67,15 +66,6 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  // Group creation form state
-  const [newGroup, setNewGroup] = useState({
-    name: '',
-    description: '',
-    language: '',
-    isPrivate: false,
-    category: '',
-  });
 
   // Helper function to get time ago
   const timeAgo = (dateIso?: string) => {
@@ -270,52 +260,11 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
-  // Create a new group
-  const createGroup = async () => {
-    if (!user?.id) return;
-    if (!newGroup.name.trim()) {
-      Alert.alert('Error', 'Group name is required.');
-      return;
-    }
-
-    try {
-      // Create conversation
-      const { data: conversation, error: convError } = await supabase
-        .from('conversations')
-        .insert({
-          title: newGroup.name,
-          is_group: true,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (convError) throw convError;
-
-      // Add creator as admin member
-      const { error: memberError } = await supabase
-        .from('conversation_members')
-        .insert({
-          conversation_id: conversation.id,
-          user_id: user.id,
-          role: 'admin',
-        });
-
-      if (memberError) throw memberError;
-
-      // Reset form and close modal
-      setNewGroup({ name: '', description: '', language: '', isPrivate: false, category: '' });
-      setShowCreateModal(false);
-
-      // Refresh groups
-      await fetchGroups();
-      await fetchMyGroups();
-
-      Alert.alert('Success', 'Group created successfully!');
-    } catch (error) {
-      console.error('Error creating group:', error);
-      Alert.alert('Error', 'Failed to create group. Please try again.');
-    }
+  // Handle group creation completion
+  const handleGroupCreated = async () => {
+    // Refresh groups when a new group is created
+    await fetchGroups();
+    await fetchMyGroups();
   };
 
   // Filter groups based on search and category
@@ -468,104 +417,6 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const CreateGroupModal = () => (
-    <Modal
-      visible={showCreateModal}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setShowCreateModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Create New Group</Text>
-            <TouchableOpacity
-              onPress={() => setShowCreateModal(false)}
-              style={styles.closeButton}
-            >
-              <Ionicons name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalBody}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Group Name</Text>
-              <TextInput
-                style={styles.textInput}
-                value={newGroup.name}
-                onChangeText={(text) => setNewGroup(prev => ({ ...prev, name: text }))}
-                placeholder="Enter group name"
-                maxLength={50}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Description</Text>
-              <TextInput
-                style={[styles.textInput, styles.textArea]}
-                value={newGroup.description}
-                onChangeText={(text) => setNewGroup(prev => ({ ...prev, description: text }))}
-                placeholder="Describe your group"
-                multiline
-                numberOfLines={3}
-                maxLength={200}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Language Focus</Text>
-              <TextInput
-                style={styles.textInput}
-                value={newGroup.language}
-                onChangeText={(text) => setNewGroup(prev => ({ ...prev, language: text }))}
-                placeholder="e.g., Spanish, French, Igbo"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Group Type</Text>
-              <View style={styles.radioGroup}>
-                <TouchableOpacity
-                  style={styles.radioOption}
-                  onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: false }))}
-                >
-                  <View style={styles.radioButton}>
-                    {!newGroup.isPrivate && <View style={styles.radioButtonSelected} />}
-                  </View>
-                  <Text style={styles.radioText}>Public - Anyone can join</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.radioOption}
-                  onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: true }))}
-                >
-                  <View style={styles.radioButton}>
-                    {newGroup.isPrivate && <View style={styles.radioButtonSelected} />}
-                  </View>
-                  <Text style={styles.radioText}>Private - Invite only</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setShowCreateModal(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.createButtons}
-              onPress={createGroup}
-            >
-              <Text style={styles.createButtonsText}>Create Group</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 
   const getCurrentGroups = () => {
     switch (activeTab) {
@@ -596,7 +447,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
           <Text style={styles.headerTitle}>Groups</Text>
           <TouchableOpacity
             onPress={() => setShowCreateModal(true)}
-            style={styles.createButtons}
+            style={styles.createHeaderButton}
           >
             <Ionicons name="add" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -691,7 +542,11 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
         )}
       </ScrollView>
 
-      <CreateGroupModal />
+      <CreateGroupModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onGroupCreated={handleGroupCreated}
+      />
     </SafeAreaView>
   );
 };
@@ -720,7 +575,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  createButtons: {
+  createHeaderButton: {
     padding: 8,
   },
   searchContainer: {
@@ -935,124 +790,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   joinButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: height * 0.8,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalBody: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1F2937',
-    backgroundColor: '#FFFFFF',
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  radioGroup: {
-    marginTop: 8,
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  radioButton: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  radioButtonSelected: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#FF8A00',
-  },
-  radioText: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 12,
-    marginRight: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  createButtonss: {
-    flex: 1,
-    paddingVertical: 12,
-    marginLeft: 8,
-    borderRadius: 8,
-    backgroundColor: '#FF8A00',
-    alignItems: 'center',
-  },
-  createButtonsText: {
-    fontSize: 16,
-    fontWeight: '500',
     color: '#FFFFFF',
   },
 });

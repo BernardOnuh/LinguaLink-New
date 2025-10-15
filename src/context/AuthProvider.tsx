@@ -131,7 +131,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           if (code) {
-            console.log('Exchanging code for session...');
             const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
             if (exchangeError) {

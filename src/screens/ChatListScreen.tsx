@@ -58,12 +58,13 @@ interface Story {
 const ChatListScreen: React.FC<any> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'Chats' | 'Contacts' | 'Games'>('Chats');
+  const [activeTab, setActiveTab] = useState<'Chats' | 'Groups' | 'Contacts' | 'Games'>('Chats');
   const [searchQuery, setSearchQuery] = useState('');
   const [showTranslations, setShowTranslations] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
   const [contacts, setContacts] = useState<ChatContact[]>([]);
+  const [joinedGroups, setJoinedGroups] = useState<ChatContact[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
@@ -87,6 +88,8 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       if (error) throw error;
       const results: ChatContact[] = [];
       for (const c of (convs || [])) {
+          // Only include individual chats, not groups
+          if (c.is_group) continue;
           // Fetch the other participant via RPC to avoid RLS recursion
           let name = c.title || 'Conversation';
           let username = 'user';
@@ -143,9 +146,71 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     }
   }, [user?.id, refreshing]);
 
+  // Fetch user's joined groups
+  const fetchJoinedGroups = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data: memberships, error } = await supabase
+        .from('conversation_members')
+        .select(`
+          conversation_id,
+          conversations (
+            id,
+            title,
+            created_by,
+            created_at,
+            last_message_at,
+            last_message_preview,
+            is_group
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('conversations.is_group', true);
+
+      if (error) throw error;
+
+      // Get member counts for user's groups
+      const groupIds = memberships?.map(m => m.conversation_id) || [];
+      const memberCounts = await Promise.all(
+        groupIds.map(async (groupId) => {
+          const { count } = await supabase
+            .from('conversation_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('conversation_id', groupId);
+          return { groupId, count: count || 0 };
+        })
+      );
+
+      const memberCountMap = memberCounts.reduce((acc, { groupId, count }) => {
+        acc[groupId] = count;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const mappedGroups: ChatContact[] = (memberships || []).map((membership: any) => ({
+        id: membership.conversation_id,
+        name: membership.conversations?.title || 'Untitled Group',
+        username: membership.conversations?.title?.toLowerCase().replace(/\s+/g, '_') || 'group',
+        avatar: '👥',
+        language: 'Multiple',
+        lastMessage: membership.conversations?.last_message_preview || '',
+        lastMessageTime: timeAgo(membership.conversations?.last_message_at),
+        unreadCount: 0,
+        isOnline: true,
+        isFollowing: true,
+        followers: memberCountMap[membership.conversation_id] || 0,
+        posts: 0,
+      }));
+
+      setJoinedGroups(mappedGroups);
+    } catch (error) {
+      console.error('Error fetching joined groups:', error);
+    }
+  }, [user?.id]);
+
   // Load conversations → map to contact cards without changing UI
   useEffect(() => {
     fetchChats();
+    fetchJoinedGroups();
     // Realtime: update last message & unread on new messages
     const channel = supabase
       .channel('chatlist-messages')
@@ -183,9 +248,16 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             });
         }
       })
+      // Real-time group updates
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_members' }, () => {
+        fetchJoinedGroups();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'conversation_members' }, () => {
+        fetchJoinedGroups();
+      })
       .subscribe();
     return () => { channel.unsubscribe(); };
-  }, [user?.id, fetchChats]);
+  }, [user?.id, fetchChats, fetchJoinedGroups]);
 
   // Stories: initial load and realtime updates
   const fetchStories = useCallback(async () => {
@@ -453,7 +525,26 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     <TouchableOpacity
       key={contact.id}
       style={styles.chatItem}
-      onPress={() => navigation.navigate('ChatDetail', { contact, conversationId: contact.id })}
+      onPress={() => {
+        // Check if this is a group (has 👥 avatar)
+        if (contact.avatar === '👥') {
+          navigation.navigate('GroupChat', {
+            group: {
+              id: contact.id,
+              name: contact.name,
+              description: 'Language learning group',
+              avatar: contact.avatar,
+              members: contact.followers || 0,
+              language: contact.language,
+              lastActivity: contact.lastMessageTime,
+              isPrivate: false,
+              unreadCount: contact.unreadCount,
+            }
+          });
+        } else {
+          navigation.navigate('ChatDetail', { contact, conversationId: contact.id });
+        }
+      }}
     >
       <View style={styles.chatItemLeft}>
         <View style={[styles.avatar, contact.isOnline && styles.onlineAvatar]}>
@@ -564,6 +655,10 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       contact.language.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const filteredGroups = joinedGroups.filter(group =>
+      group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      group.language.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     switch (activeTab) {
       case 'Chats':
@@ -584,6 +679,26 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           );
         }
         return filteredContacts.map(renderChatItem);
+      case 'Groups':
+        return (
+          <View>
+            <TouchableOpacity
+              style={styles.findContactsButton}
+              onPress={() => navigation.navigate('Groups')}
+            >
+              <Ionicons name="add-circle" size={20} color="#FF8A00" />
+              <Text style={styles.findContactsText}>Discover & Join Groups</Text>
+            </TouchableOpacity>
+            {filteredGroups.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>You haven't joined any groups yet</Text>
+                <Text style={styles.emptySubtext}>Tap "Discover & Join Groups" to find groups to join</Text>
+              </View>
+            ) : (
+              filteredGroups.map(renderChatItem)
+            )}
+          </View>
+        );
       case 'Contacts':
         return (
           <View>
@@ -670,7 +785,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
 
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
-        {['Chats', 'Contacts', 'Games'].map((tab) => (
+        {['Chats', 'Groups', 'Contacts', 'Games'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[
@@ -728,7 +843,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         data={[]}
         renderItem={() => null}
         refreshing={refreshing}
-        onRefresh={() => { setRefreshing(true); fetchChats(); }}
+        onRefresh={() => { setRefreshing(true); fetchChats(); fetchJoinedGroups(); }}
         style={{ height: 0, opacity: 0 }}
       />
 
@@ -1218,6 +1333,24 @@ const styles = StyleSheet.create({
   createOptionDesc: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: width * 0.1,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

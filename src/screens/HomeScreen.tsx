@@ -13,7 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer } from 'expo-audio';
+import { Audio } from 'expo-av';
 import { getPlayableAudioUrl } from '../utils/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -162,7 +162,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'All' | 'Voice' | 'Stories' | 'Lab'>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const audioPlayer = useAudioPlayer();
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState<string | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
   const [showMoreOptions, setShowMoreOptions] = useState<string | null>(null);
@@ -185,33 +185,60 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const playAudio = async (clipId: string, audioUrl?: string) => {
     try {
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
-      }
-      setIsLoadingAudio(clipId);
-      setIsPlaying(null);
       if (!audioUrl) {
-        setIsLoadingAudio(null);
         return;
       }
+
+      // If this clip is already playing, stop it
+      if (isPlaying === clipId && sound) {
+        await sound.stopAsync();
+        setIsPlaying(null);
+        return;
+      }
+
+      // Stop any currently playing audio
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+      }
+
+      setIsLoadingAudio(clipId);
+
       const resolvedUrl = await getPlayableAudioUrl(audioUrl);
       if (!resolvedUrl) {
         setIsLoadingAudio(null);
         return;
       }
-      audioPlayer.replace(resolvedUrl);
-      audioPlayer.play();
+
+      // Create and play the audio
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: resolvedUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
       setIsPlaying(clipId);
       setIsLoadingAudio(null);
+
+      // Set up cleanup when audio finishes
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setIsPlaying(null);
+          setSound(null);
+        }
+      });
     } catch (error) {
+      console.error('Error playing audio:', error);
       setIsLoadingAudio(null);
     }
   };
 
   const stopAudio = async () => {
     try {
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        setSound(null);
       }
       setIsPlaying(null);
     } catch {}
@@ -219,11 +246,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     return () => {
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
+      if (sound) {
+        sound.unloadAsync();
       }
     };
-  }, [audioPlayer]);
+  }, [sound]);
 
   const handleValidate = (clipId: string, isCorrect: boolean) => {
     const validationType = isCorrect ? 'correct' : 'incorrect';
