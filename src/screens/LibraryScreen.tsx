@@ -23,6 +23,7 @@ import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { getPlayableAudioUrl, getPlayableVideoUrl } from '../utils/storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -75,6 +76,7 @@ interface Props {
 
 const LibraryScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<'Voice Clips' | 'Video Clips' | 'AI Stories'>('Voice Clips');
+  const insets = useSafeAreaInsets();
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>([]);
   const [videoClips, setVideoClips] = useState<VideoClip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -315,7 +317,7 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>My Library</Text>
           <TouchableOpacity>
@@ -373,7 +375,7 @@ const LibraryScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         {activeTab === 'Voice Clips' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Your Voice Contributions</Text>
