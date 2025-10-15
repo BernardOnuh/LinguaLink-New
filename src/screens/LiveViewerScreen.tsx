@@ -16,6 +16,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
@@ -55,6 +56,7 @@ interface LiveStream {
 const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
   const { roomId } = route.params || {};
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [liveStream, setLiveStream] = useState<LiveStream | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -371,7 +373,7 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
       {/* Stream Header */}
-      <View style={styles.streamHeader}>
+      <View style={[styles.streamHeader, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -499,7 +501,7 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
       </View>
 
       {/* Comment Input */}
-      <View style={styles.commentInputContainer}>
+      <View style={[styles.commentInputContainer, { paddingBottom: insets.bottom + 12 }]}>
         <TextInput
           style={styles.commentInput}
           placeholder="Say something..."

@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
 
@@ -26,6 +27,7 @@ interface Interest {
 
 const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -224,7 +226,7 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
         <Text style={styles.headerTitle}>What interests you?</Text>
         <Text style={styles.headerSubtitle}>
           Help us personalize your experience by selecting your interests
