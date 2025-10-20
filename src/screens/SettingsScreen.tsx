@@ -14,6 +14,8 @@ import {
   TextInput,
   Modal,
   Share,
+  Platform,
+  ToastAndroid,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +29,7 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import NotificationToggle from '../components/NotificationToggle';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
+import * as Clipboard from 'expo-clipboard';
 
 const { width, height } = Dimensions.get('window');
 
@@ -75,6 +78,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const [referralCode, setReferralCode] = useState<string>('');
   const [inviteCount, setInviteCount] = useState<number>(0);
   const [loadingReferral, setLoadingReferral] = useState<boolean>(false);
+  const [copied, setCopied] = useState<boolean>(false);
 
   useEffect(() => {
     const loadReferral = async () => {
@@ -103,10 +107,15 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     loadReferral();
   }, [user?.id]);
 
-  // Copy disabled until clipboard dependency is added; use Share for now
   const handleCopyReferralCode = async () => {
     if (!referralCode) return;
-    Alert.alert('Invite Code', referralCode);
+    await Clipboard.setStringAsync(referralCode);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Invite code copied', ToastAndroid.SHORT);
+    } else {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
   };
 
   const handleShareReferral = async () => {
@@ -195,6 +204,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.settingsItemTitle}>Your invite code</Text>
               <Text style={styles.settingsItemSubtitle}>
                 {loadingReferral ? 'Loading…' : (referralCode || 'Generating on first sign-in…')}
+                {copied ? '   Copied' : ''}
               </Text>
             </View>
             <View style={{ flexDirection: 'row' }}>
