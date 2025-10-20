@@ -13,6 +13,7 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -60,6 +61,10 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>();
+  const [isAmbassador, setIsAmbassador] = useState<boolean>(false);
+  const [showAmbassadorPicker, setShowAmbassadorPicker] = useState(false);
+  const [selectedAmbassadorLanguage, setSelectedAmbassadorLanguage] = useState<Language | undefined>();
+  const [inviteCode, setInviteCode] = useState<string>('');
 
   // Real-time validation states
   const [emailError, setEmailError] = useState<string>('');
@@ -178,6 +183,11 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const handleLanguageSelect = (language: Language) => {
     setSelectedLanguage(language);
     setUser({ ...user, primaryLanguage: `${language.name}${language.dialect ? ` / ${language.dialect}` : ''}` });
+  };
+
+  const handleAmbassadorLanguageSelect = (language: Language) => {
+    setSelectedAmbassadorLanguage(language);
+    setShowAmbassadorPicker(false);
   };
 
   return (
@@ -324,6 +334,57 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
           </View>
 
+          {/* Ambassador Opt-in */}
+          <View style={styles.inputGroup}>
+            <View style={styles.toggleRow}>
+              <Text style={styles.inputLabel}>Become an Ambassador</Text>
+              <Switch
+                value={isAmbassador}
+                onValueChange={setIsAmbassador}
+                trackColor={{ false: '#D1D5DB', true: '#FFB566' }}
+                thumbColor={isAmbassador ? '#FF8A00' : '#FFFFFF'}
+              />
+            </View>
+            <Text style={styles.inputHint}>Help validate and lead your dialect community.</Text>
+
+            {isAmbassador && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.inputLabel}>Ambassador dialect</Text>
+                <TouchableOpacity
+                  style={styles.dropdownContainer}
+                  onPress={() => setShowAmbassadorPicker(true)}
+                >
+                  <Text style={[
+                    styles.dropdownText,
+                    selectedAmbassadorLanguage && styles.selectedDropdownText
+                  ]}>
+                    {selectedAmbassadorLanguage
+                      ? `${selectedAmbassadorLanguage.name}${selectedAmbassadorLanguage.dialect ? ` / ${selectedAmbassadorLanguage.dialect}` : ''}`
+                      : 'Select ambassador dialect...'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#999" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Invite Code (Optional) */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Invite code (optional)</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="key-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Enter invite code (if you have one)"
+                placeholderTextColor="#999"
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                autoCapitalize="characters"
+              />
+            </View>
+            <Text style={styles.inputHint}>Don’t have one? Leave this blank.</Text>
+          </View>
+
           {/* Welcome Pack */}
           <View style={styles.welcomePack}>
             <View style={styles.welcomePackIcon}>
@@ -366,6 +427,14 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         onClose={() => setShowLanguagePicker(false)}
         onSelect={handleLanguageSelect}
         selectedLanguage={selectedLanguage}
+      />
+
+      {/* Ambassador Dialect Picker */}
+      <LanguagePicker
+        visible={showAmbassadorPicker}
+        onClose={() => setShowAmbassadorPicker(false)}
+        onSelect={handleAmbassadorLanguageSelect}
+        selectedLanguage={selectedAmbassadorLanguage}
       />
     </SafeAreaView>
   );
@@ -446,6 +515,11 @@ const styles = StyleSheet.create({
     fontSize: width * 0.03,
     color: '#6B7280',
     marginTop: 4,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   dropdownContainer: {
     flexDirection: 'row',
