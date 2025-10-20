@@ -171,6 +171,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       fullName: user.fullName,
       username: user.username,
       primaryLanguage: user.primaryLanguage,
+      inviteCode: inviteCode?.trim() || undefined,
     });
     if (err) {
       Alert.alert('Sign Up Failed', err);

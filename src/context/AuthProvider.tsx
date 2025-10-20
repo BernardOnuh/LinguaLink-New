@@ -17,6 +17,7 @@ type AuthContextValue = {
       fullName: string;
       username: string;
       primaryLanguage: string;
+      inviteCode?: string;
     }
   ) => Promise<null | string>;
   resetPassword: (email: string) => Promise<null | string>;
@@ -46,6 +47,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Handle OAuth sign-in success (only for OAuth, not email signup)
       if (event === 'SIGNED_IN' && newSession?.user && newSession.user.app_metadata?.provider === 'google') {
         await handleOAuthSignIn(newSession.user);
+      }
+
+      // On any successful sign-in, ensure referral code exists and attribute invite if present
+      if (event === 'SIGNED_IN' && newSession?.user) {
+        try {
+          await ensureReferralSetup(newSession.user);
+        } catch (e) {
+          console.log('Post sign-in referral setup error:', e);
+        }
       }
     });
     return () => {
@@ -203,7 +213,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage }) => {
+  const generateReferralCode = () => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // exclude easily confused chars
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return code;
+  };
+
+  const ensureReferralSetup = async (user: import('@supabase/supabase-js').User) => {
+    // 1) Ensure user has a referral code; if not, create one with retry on collision
+    const { data: existingCode } = await supabase
+      .from('referral_codes')
+      .select('id')
+      .eq('owner_user_id', user.id)
+      .maybeSingle();
+
+    if (!existingCode) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const code = generateReferralCode();
+        const { error: insertErr } = await supabase
+          .from('referral_codes')
+          .insert({ owner_user_id: user.id, code });
+        if (!insertErr) break;
+        // On unique violation, retry with a new code
+        if (attempt === 2) {
+          console.log('Failed to create unique referral code after retries:', insertErr?.message);
+        }
+      }
+    }
+
+    // 2) Attribute referral if invite code was provided in metadata and not yet attributed
+    const inviteCodeRaw = (user.user_metadata as any)?.invite_code_input as string | undefined;
+    if (inviteCodeRaw) {
+      const inviteCode = inviteCodeRaw.trim().toUpperCase();
+      if (inviteCode) {
+        // find inviter code case-insensitively
+        const { data: inviterCode } = await supabase
+          .from('referral_codes')
+          .select('id, owner_user_id, code')
+          .ilike('code', inviteCode)
+          .maybeSingle();
+
+        if (inviterCode && inviterCode.owner_user_id !== user.id) {
+          // Check if referral already exists to keep idempotent
+          const { data: existingReferral } = await supabase
+            .from('referrals')
+            .select('id')
+            .eq('referral_code_id', inviterCode.id)
+            .eq('referred_user_id', user.id)
+            .maybeSingle();
+
+          if (!existingReferral) {
+            await supabase
+              .from('referrals')
+              .insert({ referral_code_id: inviterCode.id, referred_user_id: user.id });
+          }
+        }
+
+        // Clear the metadata flag to avoid repeated processing (best-effort; ignore failure)
+        try {
+          await supabase.auth.updateUser({ data: { invite_code_input: null } });
+        } catch {}
+      }
+    }
+  };
+
+  const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage, inviteCode }) => {
     setLoading(true);
     try {
       // Check if email already exists
@@ -240,6 +317,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             full_name: fullName,
             username,
             primary_language: primaryLanguage,
+            // Persist invite code temporarily in metadata; backend will process on first sign-in
+            invite_code_input: inviteCode || null,
           },
           emailRedirectTo,
         },
