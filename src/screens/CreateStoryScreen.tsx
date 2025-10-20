@@ -18,11 +18,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
 import * as FileSystem from 'expo-file-system';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
 const CreateStoryScreen: React.FC<any> = ({ navigation }) => {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [caption, setCaption] = useState('');
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -108,7 +110,7 @@ const CreateStoryScreen: React.FC<any> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="close" size={24} color="#1F2937" />
         </TouchableOpacity>
@@ -142,7 +144,7 @@ const CreateStoryScreen: React.FC<any> = ({ navigation }) => {
       </View>
 
       {/* Bottom Action Bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.bottomBtn, styles.cancelBarBtn]}>
           <Text style={styles.cancelBtn}>Cancel</Text>
         </TouchableOpacity>

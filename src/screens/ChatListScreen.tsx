@@ -12,6 +12,7 @@ import {
   TextInput,
   Modal,
   FlatList,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -94,7 +95,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           let name = c.title || 'Conversation';
           let username = 'user';
           let language = '—';
-          let avatar = '👤';
+          let avatar = name.trim().charAt(0).toUpperCase() || 'U';
           let avatarUrl: string | undefined = undefined;
           const { data: other } = await supabase.rpc('get_other_participant', { p_conversation_id: c.id });
           if (other && other.length > 0) {
@@ -103,6 +104,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
             username = p.username || username;
             language = p.primary_language || language;
             avatarUrl = p.avatar_url || undefined;
+            // Use avatar URL if available, otherwise use first letter of name
             if (!avatarUrl && name) {
               avatar = name.trim().charAt(0).toUpperCase();
             }
@@ -190,7 +192,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         id: membership.conversation_id,
         name: membership.conversations?.title || 'Untitled Group',
         username: membership.conversations?.title?.toLowerCase().replace(/\s+/g, '_') || 'group',
-        avatar: '👥',
+        avatar: (membership.conversations?.title || 'G').trim().charAt(0).toUpperCase(),
         language: 'Multiple',
         lastMessage: membership.conversations?.last_message_preview || '',
         lastMessageTime: timeAgo(membership.conversations?.last_message_at),
@@ -526,8 +528,9 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       key={contact.id}
       style={styles.chatItem}
       onPress={() => {
-        // Check if this is a group (has 👥 avatar)
-        if (contact.avatar === '👥') {
+        // Check if this is a group by checking if it's in the groups list
+        const isGroup = joinedGroups.some(group => group.id === contact.id);
+        if (isGroup) {
           navigation.navigate('GroupChat', {
             group: {
               id: contact.id,
@@ -548,7 +551,15 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
     >
       <View style={styles.chatItemLeft}>
         <View style={[styles.avatar, contact.isOnline && styles.onlineAvatar]}>
-          <Text style={styles.avatarText}>{contact.avatar}</Text>
+          {contact.avatarUrl ? (
+            <Image
+              source={{ uri: contact.avatarUrl }}
+              style={styles.avatarImage}
+              defaultSource={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' }}
+            />
+          ) : (
+            <Text style={styles.avatarText}>{contact.avatar}</Text>
+          )}
           {contact.isOnline && <View style={styles.onlineIndicator} />}
         </View>
       </View>
@@ -1054,6 +1065,11 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: 24,
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   onlineIndicator: {
     position: 'absolute',
