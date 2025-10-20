@@ -112,6 +112,7 @@ export type RootStackParamList = {
   UserProfile: {
     user: Contact | SocialUserProfile;
   };
+  Invites: undefined;
 };
 
 export type TabParamList = {

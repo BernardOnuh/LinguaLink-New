@@ -28,6 +28,7 @@ import RewardsScreen from './src/screens/RewardsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import UserProfileScreen from './src/screens/UserProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import InvitesScreen from './src/screens/InvitesScreen';
 import ValidationScreen from './src/screens/ValidationScreen';
 
 // Import new Chat screens
@@ -596,6 +597,14 @@ const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+
+        <Stack.Screen
+          name="Invites"
+          component={InvitesScreen}
           options={{
             animation: 'slide_from_right',
           }}

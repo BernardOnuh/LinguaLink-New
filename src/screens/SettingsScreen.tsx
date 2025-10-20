@@ -1,5 +1,5 @@
 // src/screens/SettingsScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -69,6 +70,50 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // Referral state
+  const [referralCode, setReferralCode] = useState<string>('');
+  const [inviteCount, setInviteCount] = useState<number>(0);
+  const [loadingReferral, setLoadingReferral] = useState<boolean>(false);
+
+  useEffect(() => {
+    const loadReferral = async () => {
+      if (!user?.id) return;
+      setLoadingReferral(true);
+      try {
+        const { data: codeRow } = await supabase
+          .from('referral_codes')
+          .select('code, id')
+          .eq('owner_user_id', user.id)
+          .maybeSingle();
+
+        if (codeRow?.code) setReferralCode(codeRow.code);
+
+        const { data: countRows } = await supabase
+          .from('referrals')
+          .select('id, referral_code_id')
+          .in('referral_code_id', codeRow?.id ? [codeRow.id] : ['00000000-0000-0000-0000-000000000000']);
+
+        setInviteCount(countRows ? countRows.length : 0);
+      } catch (e) {
+      } finally {
+        setLoadingReferral(false);
+      }
+    };
+    loadReferral();
+  }, [user?.id]);
+
+  // Copy disabled until clipboard dependency is added; use Share for now
+  const handleCopyReferralCode = async () => {
+    if (!referralCode) return;
+    Alert.alert('Invite Code', referralCode);
+  };
+
+  const handleShareReferral = async () => {
+    if (!referralCode) return;
+    const message = `Join me on LinguaLink! Use my code ${referralCode} when you sign up. lingualink://signup?code=${referralCode}`;
+    try { await Share.share({ message }); } catch {}
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -137,6 +182,43 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             title="Privacy Settings"
             onPress={() => Alert.alert('Privacy Settings', 'Privacy settings coming soon!')}
           />
+        </SettingsSection>
+
+        {/* Referrals */}
+        <SettingsSection
+          title="Referrals"
+          icon="gift-outline"
+          iconColor="#F59E0B"
+        >
+          <View style={styles.settingsItem}>
+            <View style={styles.settingsItemContent}>
+              <Text style={styles.settingsItemTitle}>Your invite code</Text>
+              <Text style={styles.settingsItemSubtitle}>
+                {loadingReferral ? 'Loading…' : (referralCode || 'Generating on first sign-in…')}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row' }}>
+              <TouchableOpacity onPress={handleCopyReferralCode} style={{ marginRight: 12 }}>
+                <Ionicons name="copy-outline" size={20} color="#1F2937" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleShareReferral}>
+                <Ionicons name="share-social-outline" size={20} color="#1F2937" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.settingsItem}
+            onPress={() => navigation.navigate('Invites' as never)}
+          >
+            <View style={styles.settingsItemContent}>
+              <Text style={styles.settingsItemTitle}>View your invites</Text>
+              <Text style={styles.settingsItemSubtitle}>
+                {loadingReferral ? 'Loading…' : `${inviteCount} joined with your code`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
         </SettingsSection>
 
         {/* Language Settings */}

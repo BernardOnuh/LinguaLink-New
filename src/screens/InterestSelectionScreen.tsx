@@ -221,6 +221,18 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
     content: 'Content Types'
   };
 
+  const orderedCategories = (Object.keys(categoryTitles) as Array<keyof typeof categoryTitles>)
+    .filter((key) => Boolean(groupedInterests[key] && groupedInterests[key].length > 0));
+
+  // Compute progress: number of categories with at least one selected interest
+  const selectedSet = new Set(selectedInterests);
+  const completedCategories = orderedCategories.reduce((count, cat) => {
+    const anySelected = (groupedInterests[cat] || []).some(i => selectedSet.has(i.id));
+    return count + (anySelected ? 1 : 0);
+  }, 0);
+  const totalSteps = orderedCategories.length || 1;
+  const progressPercent = Math.round(((completedCategories) / totalSteps) * 100);
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
@@ -236,9 +248,9 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
       {/* Progress Indicator */}
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '75%' }]} />
+          <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
         </View>
-        <Text style={styles.progressText}>Step 3 of 4</Text>
+        <Text style={styles.progressText}>Step {completedCategories} of {totalSteps}</Text>
       </View>
 
       {/* Content */}
@@ -246,13 +258,13 @@ const InterestSelectionScreen: React.FC<any> = ({ navigation }) => {
         style={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {Object.entries(groupedInterests).map(([category, categoryInterests]) => (
-          <View key={category} style={styles.categorySection}>
+        {orderedCategories.map((categoryKey) => (
+          <View key={String(categoryKey)} style={styles.categorySection}>
             <Text style={styles.categoryTitle}>
-              {categoryTitles[category as keyof typeof categoryTitles]}
+              {categoryTitles[categoryKey]}
             </Text>
             <View style={styles.interestsGrid}>
-              {categoryInterests.map(renderInterestCard)}
+              {groupedInterests[categoryKey].map(renderInterestCard)}
             </View>
           </View>
         ))}
