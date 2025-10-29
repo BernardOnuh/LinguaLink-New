@@ -57,6 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'SIGNED_IN' && newSession?.user) {
         try {
           await ensureReferralSetup(newSession.user);
+          await syncLocationFromMetadata(newSession.user);
         } catch (e) {
           console.log('Post sign-in referral setup error:', e);
         }
@@ -203,6 +204,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             username: userMetadata?.username || userMetadata?.email?.split('@')[0] || '',
             avatar_url: userMetadata?.avatar_url || '',
             primary_language: userMetadata?.primary_language || 'English',
+            country: (userMetadata as any)?.country || null,
+            state: (userMetadata as any)?.state || null,
+            city: (userMetadata as any)?.city || null,
+            lga: (userMetadata as any)?.lga || null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
@@ -281,6 +286,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await supabase.auth.updateUser({ data: { invite_code_input: null } });
         } catch {}
       }
+    }
+  };
+
+  const syncLocationFromMetadata = async (user: import('@supabase/supabase-js').User) => {
+    try {
+      const meta = user.user_metadata as any;
+      const hasAny = meta?.country || meta?.state || meta?.city || meta?.lga;
+      if (!hasAny) return;
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          country: meta.country || null,
+          state: meta.state || null,
+          city: meta.city || null,
+          lga: meta.lga || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+    } catch (e) {
+      console.log('syncLocationFromMetadata error', e);
     }
   };
 
