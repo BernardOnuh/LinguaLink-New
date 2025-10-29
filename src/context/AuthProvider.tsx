@@ -18,6 +18,10 @@ type AuthContextValue = {
       username: string;
       primaryLanguage: string;
       inviteCode?: string;
+      country?: string;
+      state?: string;
+      city?: string;
+      lga?: string;
     }
   ) => Promise<null | string>;
   resetPassword: (email: string) => Promise<null | string>;
@@ -280,7 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage, inviteCode }) => {
+  const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage, inviteCode, country, state, city, lga }) => {
     setLoading(true);
     try {
       // Check if email already exists
@@ -319,6 +323,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             primary_language: primaryLanguage,
             // Persist invite code temporarily in metadata; backend will process on first sign-in
             invite_code_input: inviteCode || null,
+            // Store location in metadata for now (not persisted to profiles yet)
+            country: country || null,
+            state: state || null,
+            city: city || null,
+            lga: lga || null,
           },
           emailRedirectTo,
         },
