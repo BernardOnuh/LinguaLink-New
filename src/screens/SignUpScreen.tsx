@@ -203,7 +203,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.formTitle}>Join LinguaLink</Text>
+          <Text style={styles.formTitle}>Join Lingualink AI</Text>
         </View>
         <Text style={styles.formSubtitle}>Preserve languages through voice and stories</Text>
 
@@ -403,7 +403,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           }
           <TouchableOpacity style={styles.primaryButton} onPress={handleSignUp} disabled={loading}>
             <Ionicons name="sparkles" size={20} color="#FFFFFF" style={styles.buttonIcon} />
-            <Text style={styles.primaryButtonText}>{loading ? 'Creating...' : 'Join LinguaLink'}</Text>
+            <Text style={styles.primaryButtonText}>{loading ? 'Creating...' : 'Join Lingualink AI'}</Text>
           </TouchableOpacity>
 
           {/* Google Sign Up */}

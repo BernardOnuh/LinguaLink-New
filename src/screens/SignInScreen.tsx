@@ -274,8 +274,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: width * 0.05,
     paddingTop: height * 0.04,
     paddingBottom: height * 0.05,
-    flexGrow: 1,
-    justifyContent: 'center',
   },
   inputGroup: {
     marginBottom: height * 0.025,
