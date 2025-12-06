@@ -5,11 +5,11 @@
     "version": "1.0.0",
     "scheme": "lingualink",
     "orientation": "portrait",
-    "icon": "./assets/icon-new.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FF8A00"
     },
@@ -33,7 +33,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon-new.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FF8A00"
       },
       "edgeToEdgeEnabled": true,
