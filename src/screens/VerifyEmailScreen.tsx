@@ -18,7 +18,7 @@ const VerifyEmailScreen: React.FC<any> = ({ navigation, route }) => {
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
-        options: { emailRedirectTo: 'lingualink://auth-callback' },
+        options: { emailRedirectTo: 'lingualink://auth' },
       });
       if (error) throw error;
       Alert.alert('Verification Sent', 'Please check your email for the verification link.');

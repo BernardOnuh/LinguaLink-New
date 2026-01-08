@@ -7,6 +7,10 @@ export interface UploadResult {
   error?: string;
 }
 
+export interface UploadVideoResult extends UploadResult {
+  thumbnailUrl?: string;
+}
+
 /**
  * Upload an audio file to Supabase Storage
  * @param fileUri - Local file URI from Expo AV recording
@@ -34,8 +38,21 @@ export const uploadAudioFile = async (
 
     console.log('Storage path:', storagePath);
 
+     // Normalize URI: if content://, copy to cache to obtain a file:// path
+    let sourceUri = fileUri;
+    if (sourceUri?.startsWith('content://')) {
+      const destPath = `${FileSystem.cacheDirectory}upload_${timestamp}_${randomId}.bin`;
+      console.log('Copying content URI to cache:', destPath);
+      await FileSystem.copyAsync({ from: sourceUri, to: destPath });
+      sourceUri = destPath;
+    }
+
+    if (!sourceUri || !(sourceUri.startsWith('file://') || sourceUri.startsWith(FileSystem.cacheDirectory || ''))) {
+      throw new Error('Invalid audio URI');
+    }
+
     // Read the file as base64
-    const base64Data = await FileSystem.readAsStringAsync(fileUri, {
+    const base64Data = await FileSystem.readAsStringAsync(sourceUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
 
@@ -89,6 +106,51 @@ export const uploadAudioFile = async (
 };
 
 /**
+ * Resolve a stored audio URL or storage path to a playable URL.
+ * If given a full http(s) URL, it is returned as-is. If given a storage path,
+ * we attempt to generate a public URL from the `voice-clips` bucket.
+ * For private buckets, switch to createSignedUrl with an expiry as needed.
+ */
+export const getPlayableAudioUrl = async (
+  storedUrlOrPath: string,
+  expiresInSeconds: number = 60 * 60
+): Promise<string | null> => {
+  try {
+    if (!storedUrlOrPath) return null;
+
+    // If it's already a full URL, return as-is
+    if (/^https?:\/\//i.test(storedUrlOrPath)) {
+      return storedUrlOrPath;
+    }
+
+    // Otherwise, treat it as a storage path in the `voice-clips` bucket
+    // By default, we try public URL. If the bucket is private, prefer signed URL.
+    const { data: publicData } = supabase.storage
+      .from('voice-clips')
+      .getPublicUrl(storedUrlOrPath);
+
+    if (publicData?.publicUrl) {
+      return publicData.publicUrl;
+    }
+
+    // Fallback to signed URL (in case the bucket is private)
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from('voice-clips')
+      .createSignedUrl(storedUrlOrPath, expiresInSeconds);
+
+    if (signedError) {
+      console.error('Error generating signed URL:', signedError);
+      return null;
+    }
+
+    return signedData?.signedUrl || null;
+  } catch (error) {
+    console.error('Error resolving playable audio URL:', error);
+    return null;
+  }
+};
+
+/**
  * Delete an audio file from Supabase Storage
  * @param filePath - Storage path of the file to delete
  * @returns Promise<boolean>
@@ -108,5 +170,58 @@ export const deleteAudioFile = async (filePath: string): Promise<boolean> => {
   } catch (error) {
     console.error('Error deleting audio file:', error);
     return false;
+  }
+};
+
+/**
+ * Upload a video file to Supabase Storage (bucket: videos)
+ */
+export const uploadVideoFile = async (
+  fileUri: string,
+  userId: string,
+  fileName?: string,
+  contentType: string = 'video/mp4'
+): Promise<UploadVideoResult> => {
+  try {
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 15);
+    const finalFileName = fileName || `video_${timestamp}_${randomId}.mp4`;
+    const storagePath = `${userId}/${finalFileName}`;
+
+    const base64Data = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+
+    const { error } = await supabase.storage
+      .from('videos')
+      .upload(storagePath, bytes, { contentType, cacheControl: '3600', upsert: false });
+    if (error) return { success: false, error: error.message };
+
+    const { data: urlData } = supabase.storage.from('videos').getPublicUrl(storagePath);
+    return { success: true, url: urlData.publicUrl };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+};
+
+export const getPlayableVideoUrl = async (
+  storedUrlOrPath: string,
+  expiresInSeconds: number = 60 * 60
+): Promise<string | null> => {
+  try {
+    if (!storedUrlOrPath) return null;
+    if (/^https?:\/\//i.test(storedUrlOrPath)) return storedUrlOrPath;
+    const { data: publicData } = supabase.storage.from('videos').getPublicUrl(storedUrlOrPath);
+    if (publicData?.publicUrl) return publicData.publicUrl;
+    const { data: signedData, error } = await supabase.storage
+      .from('videos')
+      .createSignedUrl(storedUrlOrPath, expiresInSeconds);
+    if (error) return null;
+    return signedData?.signedUrl || null;
+  } catch (e) {
+    return null;
   }
 };

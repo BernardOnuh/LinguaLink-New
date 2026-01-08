@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 
@@ -26,12 +27,14 @@ interface Props {
 }
 
 const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header with microphone icon */}
@@ -45,12 +48,12 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* Title */}
           <Text style={styles.title}>LinguaLink</Text>
-          
+
           {/* Subtitle */}
           <Text style={styles.subtitle}>
             Preserving languages,{'\n'}one voice at a time
           </Text>
-          
+
           {/* AI-powered tagline */}
           <Text style={styles.tagline}>Now with AI-powered storytelling</Text>
         </View>
@@ -88,7 +91,7 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
             <Ionicons name="sparkles" size={20} color="#FF8A00" style={styles.buttonIcon} />
             <Text style={styles.primaryButtonText}>Get Started</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => navigation.navigate('SignIn')}

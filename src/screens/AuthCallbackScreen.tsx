@@ -17,6 +17,9 @@ const AuthCallbackScreen: React.FC = () => {
 
         // Handle different types of auth callbacks
         const code = params?.code || params?.queryParams?.code;
+        const type = params?.type || params?.queryParams?.type;
+        const accessToken = params?.access_token || params?.queryParams?.access_token;
+        const refreshToken = params?.refresh_token || params?.queryParams?.refresh_token;
         const error = params?.error || params?.queryParams?.error;
         const errorDescription = params?.error_description || params?.queryParams?.error_description;
 
@@ -27,7 +30,36 @@ const AuthCallbackScreen: React.FC = () => {
           return;
         }
 
-        if (code) {
+        // Handle password recovery and magic link style callbacks that provide tokens directly
+        if ((type === 'recovery' || type === 'signup' || type === 'magiclink' || type === 'email_change') && accessToken) {
+          console.log('Processing direct token callback for type:', type);
+          const { data, error: setSessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || accessToken,
+          });
+
+          if (setSessionError) {
+            console.error('Set session error:', setSessionError);
+            setErrorMessage(setSessionError.message);
+            setStatus('error');
+            return;
+          }
+
+          if (data.session) {
+            console.log('Session established for type:', type);
+            setStatus('success');
+            if (type === 'recovery') {
+              // Navigate user to set a new password
+              // Ensure your navigator has a 'NewPassword' route
+              navigation.navigate('NewPassword', { fromRecovery: true });
+              return;
+            }
+            // For other types, AuthGate should take over
+          } else {
+            setErrorMessage('No session received');
+            setStatus('error');
+          }
+        } else if (code) {
           console.log('Processing OAuth code...');
           const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
