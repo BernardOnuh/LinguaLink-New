@@ -13,7 +13,6 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,10 +60,11 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>();
-  const [isAmbassador, setIsAmbassador] = useState<boolean>(false);
-  const [showAmbassadorPicker, setShowAmbassadorPicker] = useState(false);
-  const [selectedAmbassadorLanguage, setSelectedAmbassadorLanguage] = useState<Language | undefined>();
   const [inviteCode, setInviteCode] = useState<string>('');
+  const [country, setCountry] = useState<string>('');
+  const [stateRegion, setStateRegion] = useState<string>('');
+  const [city, setCity] = useState<string>('');
+  const [lga, setLga] = useState<string>('');
 
   // Real-time validation states
   const [emailError, setEmailError] = useState<string>('');
@@ -152,7 +152,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   }, [user.username]);
 
   const handleSignUp = async () => {
-    if (!user.fullName || !user.username || !user.email || !user.password || !user.primaryLanguage) {
+    if (!user.fullName || !user.username || !user.email || !user.password || !user.primaryLanguage || !country || !stateRegion || !city || !lga) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
@@ -172,6 +172,10 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       username: user.username,
       primaryLanguage: user.primaryLanguage,
       inviteCode: inviteCode?.trim() || undefined,
+      country: country || undefined,
+      state: stateRegion || undefined,
+      city: city || undefined,
+      lga: lga || undefined,
     });
     if (err) {
       Alert.alert('Sign Up Failed', err);
@@ -186,10 +190,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
     setUser({ ...user, primaryLanguage: `${language.name}${language.dialect ? ` / ${language.dialect}` : ''}` });
   };
 
-  const handleAmbassadorLanguageSelect = (language: Language) => {
-    setSelectedAmbassadorLanguage(language);
-    setShowAmbassadorPicker(false);
-  };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -335,38 +336,61 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
           </View>
 
-          {/* Ambassador Opt-in */}
+          {/* Location */}
           <View style={styles.inputGroup}>
-            <View style={styles.toggleRow}>
-              <Text style={styles.inputLabel}>Become an Ambassador</Text>
-              <Switch
-                value={isAmbassador}
-                onValueChange={setIsAmbassador}
-                trackColor={{ false: '#D1D5DB', true: '#FFB566' }}
-                thumbColor={isAmbassador ? '#FF8A00' : '#FFFFFF'}
+            <Text style={styles.inputLabel}>Country</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="flag-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Nigeria"
+                placeholderTextColor="#999"
+                value={country}
+                onChangeText={setCountry}
               />
             </View>
-            <Text style={styles.inputHint}>Help validate and lead your dialect community.</Text>
+          </View>
 
-            {isAmbassador && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={styles.inputLabel}>Ambassador dialect</Text>
-                <TouchableOpacity
-                  style={styles.dropdownContainer}
-                  onPress={() => setShowAmbassadorPicker(true)}
-                >
-                  <Text style={[
-                    styles.dropdownText,
-                    selectedAmbassadorLanguage && styles.selectedDropdownText
-                  ]}>
-                    {selectedAmbassadorLanguage
-                      ? `${selectedAmbassadorLanguage.name}${selectedAmbassadorLanguage.dialect ? ` / ${selectedAmbassadorLanguage.dialect}` : ''}`
-                      : 'Select ambassador dialect...'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={20} color="#999" />
-                </TouchableOpacity>
-              </View>
-            )}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>State</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="map-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Lagos State"
+                placeholderTextColor="#999"
+                value={stateRegion}
+                onChangeText={setStateRegion}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>City</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="business-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Ikeja"
+                placeholderTextColor="#999"
+                value={city}
+                onChangeText={setCity}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Local Government</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="location-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Ikeja LGA"
+                placeholderTextColor="#999"
+                value={lga}
+                onChangeText={setLga}
+              />
+            </View>
           </View>
 
           {/* Invite Code (Optional) */}
@@ -430,13 +454,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         selectedLanguage={selectedLanguage}
       />
 
-      {/* Ambassador Dialect Picker */}
-      <LanguagePicker
-        visible={showAmbassadorPicker}
-        onClose={() => setShowAmbassadorPicker(false)}
-        onSelect={handleAmbassadorLanguageSelect}
-        selectedLanguage={selectedAmbassadorLanguage}
-      />
+
     </SafeAreaView>
   );
 };
