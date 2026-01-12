@@ -120,7 +120,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleShareReferral = async () => {
     if (!referralCode) return;
-    const message = `Join me on LinguaLink! Use my code ${referralCode} when you sign up. lingualink://signup?code=${referralCode}`;
+    const message = `Join me on Lingualink AI! Use my code ${referralCode} when you sign up. lingualink://signup?code=${referralCode}`;
     try { await Share.share({ message }); } catch {}
   };
 

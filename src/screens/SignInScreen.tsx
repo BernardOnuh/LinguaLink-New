@@ -150,6 +150,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
                 placeholderTextColor="#999"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                importantForAutofill="no"
                 value={credentials.email}
                 onChangeText={(text) => {
                   setCredentials({ ...credentials, email: text });
@@ -178,6 +179,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
                 placeholder="Enter your password"
                 placeholderTextColor="#999"
                 secureTextEntry={!showPassword}
+                importantForAutofill="no"
                 value={credentials.password}
                 onChangeText={(text) => {
                   setCredentials({ ...credentials, password: text });
@@ -274,8 +276,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: width * 0.05,
     paddingTop: height * 0.04,
     paddingBottom: height * 0.05,
-    flexGrow: 1,
-    justifyContent: 'center',
   },
   inputGroup: {
     marginBottom: height * 0.025,

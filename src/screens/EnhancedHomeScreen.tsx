@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,12 +17,14 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
-import { getPlayableAudioUrl } from '../utils/storage';
+import { getPlayableAudioUrl, getPlayableVideoUrl } from '../utils/storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import VideoPlayerModal from '../components/VideoPlayerModal';
+import PostOptionsModal from '../components/PostOptionsModal';
+import { useAudioPlayback } from '../hooks/useAudioPlayback';
 
 const { width, height } = Dimensions.get('window');
 
@@ -130,6 +132,7 @@ interface Post {
     audioWaveform?: number[];
     audioUrl?: string;
     videoThumbnail?: string;
+    videoUrl?: string;
     storyTitle?: string;
     duration?: string;
   };
@@ -175,11 +178,14 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [showMoreOptions, setShowMoreOptions] = useState<string | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
-  const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Audio playback hook
+  const { currentPlayingId, isLoadingAudio, playAudio, stopAudio } = useAudioPlayback();
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
+  const [isLoadingVideo, setIsLoadingVideo] = useState<string | null>(null);
   const { user } = useAuth();
 
   // Fetch live streams from database
@@ -343,7 +349,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           content: {
             phrase: clip.phrase || 'Video clip',
             translation: clip.translation || '',
-            videoThumbnail: '🎬',
+            videoThumbnail: clip.thumbnail_url || '🎬',
+            videoUrl: clip.video_url,
             duration: clip.duration ? `${Math.floor(clip.duration / 60)}:${(clip.duration % 60).toString().padStart(2, '0')}` : '0:00',
           },
           engagement: {
@@ -419,14 +426,14 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     }, [fetchRealContent])
   );
 
-  // Cleanup audio when component unmounts
-  useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
-    };
-  }, [sound]);
+  // Stop audio when navigating away
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        stopAudio();
+      };
+    }, [stopAudio])
+  );
 
   // Check follow status for current user
   useEffect(() => {
@@ -708,11 +715,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           is_approved: isCorrect,
         });
       if (error) throw error;
-
-      Alert.alert(
-        'Validation Submitted',
-        `Thank you for validating this pronunciation as ${isCorrect ? 'correct' : 'needs improvement'}.`
-      );
     } catch (e) {
       // Revert on error
       setPosts(prev => prev.map(post =>
@@ -728,8 +730,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           : post
       ));
       Alert.alert('Error', 'Failed to submit validation');
-    } finally {
-      setShowMoreOptions(null);
     }
   };
 
@@ -759,53 +759,49 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     }
 
     try {
-      // If this post is already playing, stop it
-      if (currentPlayingId === postId && sound) {
-        await sound.stopAsync();
-        setCurrentPlayingId(null);
-        return;
-      }
-
-      // Stop any currently playing audio
-      if (sound) {
-        await sound.unloadAsync();
-        setSound(null);
-      }
-
-      setIsLoadingAudio(postId);
-
       // Get playable URL
       const resolvedUrl = await getPlayableAudioUrl(audioUrl);
       if (!resolvedUrl) {
-        setIsLoadingAudio(null);
         Alert.alert('Error', 'Failed to load audio file');
         return;
       }
 
-      // Create and play the audio
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: resolvedUrl },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
-      setCurrentPlayingId(postId);
-      setIsLoadingAudio(null);
-
-      // Set up cleanup when audio finishes
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setCurrentPlayingId(null);
-          setSound(null);
-        }
-      });
-
+      // Use the hook to play audio
+      await playAudio(postId, resolvedUrl);
       console.log('Playing audio:', resolvedUrl);
     } catch (error) {
       console.error('Error playing audio:', error);
-      setIsLoadingAudio(null);
       Alert.alert('Error', 'Failed to play audio file');
     }
+  };
+
+  const handleVideoPlay = async (postId: string, videoUrl?: string) => {
+    if (!videoUrl) {
+      Alert.alert('No Video', 'This post does not have a video file');
+      return;
+    }
+
+    try {
+      setIsLoadingVideo(postId);
+      const resolvedUrl = await getPlayableVideoUrl(videoUrl);
+      if (!resolvedUrl) {
+        setIsLoadingVideo(null);
+        Alert.alert('Error', 'Failed to load video file');
+        return;
+      }
+      setCurrentVideoUrl(resolvedUrl);
+      setShowVideoPlayer(true);
+    } catch (error) {
+      console.error('Error loading video:', error);
+      Alert.alert('Error', 'Failed to play video file');
+    } finally {
+      setIsLoadingVideo(null);
+    }
+  };
+
+  const handleCloseVideoPlayer = () => {
+    setShowVideoPlayer(false);
+    setCurrentVideoUrl(null);
   };
 
   const handleFollow = async (userId: string) => {
@@ -1090,110 +1086,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     </Modal>
   );
 
-  const MoreOptionsModal = ({ post }: { post: Post }) => (
-    <Modal
-      visible={showMoreOptions === post.id}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowMoreOptions(null)}
-    >
-      <View style={styles.modalOverlay}>
-        <TouchableOpacity
-          style={styles.modalBackground}
-          onPress={() => setShowMoreOptions(null)}
-        />
-        <View style={[styles.moreOptionsContent, { paddingBottom: insets.bottom + 24 }]}>
-          <TouchableOpacity
-            style={styles.optionItem}
-            onPress={() => {
-              handleFollow(post.user.id);
-              setShowMoreOptions(null);
-            }}
-          >
-            <Ionicons
-              name={post.user.isFollowing ? "person-remove" : "person-add"}
-              size={20}
-              color={post.user.isFollowing ? "#EF4444" : "#10B981"}
-            />
-            <Text style={styles.optionText}>
-              {post.user.isFollowing ? `Unfollow ${post.user.name}` : `Follow ${post.user.name}`}
-            </Text>
-          </TouchableOpacity>
 
-          {post.type === 'voice' && (
-            <>
-              <TouchableOpacity
-                style={styles.optionItem}
-                onPress={() => {
-                  setShowMoreOptions(null);
-                  navigation.navigate('RecordVoice', {
-                    isDuet: true,
-                    originalClip: {
-                      id: post.id,
-                      phrase: post.content.phrase,
-                      user: post.user.name,
-                      language: post.user.language
-                    }
-                  });
-                }}
-              >
-                <Ionicons name="people" size={20} color="#10B981" />
-                <Text style={styles.optionText}>Create Duet</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.optionItem}
-                onPress={() => {
-                  setShowMoreOptions(null);
-                  navigation.navigate('Validation', {
-                    clipId: post.id,
-                    language: post.user.language
-                  });
-                }}
-              >
-                <Ionicons name="checkmark-circle" size={20} color="#F59E0B" />
-                <Text style={styles.optionText}>Validate Pronunciation</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {post.actions.needsValidation && (
-            <>
-              <View style={styles.optionDivider} />
-              <Text style={styles.validationHeader}>Quick Validation</Text>
-              <TouchableOpacity
-                style={[styles.optionItem, styles.validationOption]}
-                onPress={() => handleValidate(post.id, true)}
-              >
-                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                <Text style={styles.optionText}>Mark as Correct</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.optionItem, styles.validationOption]}
-                onPress={() => handleValidate(post.id, false)}
-              >
-                <Ionicons name="close-circle" size={20} color="#EF4444" />
-                <Text style={styles.optionText}>Needs Improvement</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          <View style={styles.optionDivider} />
-          <TouchableOpacity
-            style={styles.optionItem}
-            onPress={() => {
-              setShowMoreOptions(null);
-              Alert.alert('Report', 'Report functionality would be implemented here.');
-            }}
-          >
-            <Ionicons name="flag" size={20} color="#EF4444" />
-            <Text style={styles.optionText}>Report</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
 
   const renderWaveform = (waveform: number[]) => (
     <View style={styles.waveformContainer}>
@@ -1324,9 +1217,26 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         {post.type === 'video' && (
           <View style={styles.videoContainer}>
             <View style={styles.videoThumbnail}>
-              <Text style={styles.videoThumbnailText}>{post.content.videoThumbnail}</Text>
-              <TouchableOpacity style={styles.videoPlayButton}>
-                <Ionicons name="play" size={32} color="#FFFFFF" />
+              {post.content.videoThumbnail && /^https?:\/\//i.test(post.content.videoThumbnail) ? (
+                <Image
+                  source={{ uri: post.content.videoThumbnail }}
+                  style={styles.videoThumbnailImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.videoThumbnailPlaceholder}>
+                  <Text style={styles.videoThumbnailText}>{post.content.videoThumbnail || '🎬'}</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.videoPlayButton}
+                onPress={() => handleVideoPlay(post.id, (post.content as any).videoUrl)}
+              >
+                {isLoadingVideo === post.id ? (
+                  <ActivityIndicator size="large" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="play" size={32} color="#FFFFFF" />
+                )}
               </TouchableOpacity>
               <View style={styles.videoDuration}>
                 <Text style={styles.videoDurationText}>{post.content.duration}</Text>
@@ -1446,7 +1356,34 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <MoreOptionsModal post={post} />
+      <PostOptionsModal
+        visible={showMoreOptions === post.id}
+        postId={post.id}
+        postType={post.type}
+        user={post.user}
+        needsValidation={post.actions.needsValidation}
+        onClose={() => setShowMoreOptions(null)}
+        onFollow={handleFollow}
+        onDuet={(postId) => {
+          navigation.navigate('RecordVoice', {
+            isDuet: true,
+            originalClip: {
+              id: postId,
+              phrase: post.content.phrase,
+              user: post.user.name,
+              language: post.user.language
+            }
+          });
+        }}
+        onValidate={handleValidate}
+        onNavigateValidation={(postId, language) => {
+          navigation.navigate('Validation', {
+            clipId: postId,
+            language: language
+          });
+        }}
+        userLanguage={post.user.language}
+      />
       <ShareModal postId={post.id} />
     </View>
   );
@@ -1460,7 +1397,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + height * 0.01 }]}>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>LinguaLink</Text>
+          <Text style={styles.headerTitle}>Lingualink AI</Text>
            <View style={styles.headerActions}>
             <TouchableOpacity>
               <Ionicons name="search" size={24} color="#FFFFFF" />
@@ -1619,6 +1556,11 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       </TouchableOpacity>
 
       <CreatePostModal />
+      <VideoPlayerModal
+        visible={showVideoPlayer}
+        videoUrl={currentVideoUrl}
+        onClose={handleCloseVideoPlayer}
+      />
     </SafeAreaView>
   );
 };
@@ -2118,6 +2060,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     marginBottom: 12,
+    overflow: 'hidden',
+  },
+  videoThumbnailImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  videoThumbnailPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#E5E7EB',
   },
   videoThumbnailText: {
     fontSize: 60,
@@ -2343,43 +2298,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginLeft: 16,
     fontWeight: '500',
-  },
-  moreOptionsContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 40,
-  },
-  optionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 4,
-  },
-  optionText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1F2937',
-    marginLeft: 12,
-  },
-  optionDivider: {
-    height: 1,
-    backgroundColor: '#E5E5E5',
-    marginVertical: 8,
-  },
-  validationHeader: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginTop: 8,
-    marginBottom: 4,
-    paddingHorizontal: 4,
-  },
-  validationOption: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-    marginVertical: 2,
   },
 });
 
