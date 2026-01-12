@@ -12,6 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 
@@ -27,6 +28,7 @@ interface Props {
 }
 
 const TellStoryScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [hasRecorded, setHasRecorded] = useState(false);
@@ -121,9 +123,9 @@ const TellStoryScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
@@ -218,12 +220,12 @@ const TellStoryScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Action Buttons */}
       {hasRecorded && (
-        <View style={styles.actionButtons}>
+        <View style={[styles.actionButtons, { paddingBottom: insets.bottom + 20 }]}>
           <TouchableOpacity style={styles.discardButton} onPress={handleDiscard}>
             <Ionicons name="trash-outline" size={20} color="#EF4444" />
             <Text style={styles.discardButtonText}>Discard</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.createButton} onPress={handleCreateStory}>
             <Ionicons name="sparkles" size={20} color="#FFFFFF" />
             <Text style={styles.createButtonText}>Create AI Story</Text>
@@ -268,7 +270,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: width * 0.05,
-    paddingVertical: 16,
+    paddingBottom: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',

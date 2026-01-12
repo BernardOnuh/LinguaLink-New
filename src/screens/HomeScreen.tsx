@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,9 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { getPlayableAudioUrl } from '../utils/storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -41,6 +44,7 @@ interface VoiceClip {
   phrase: string;
   translation: string;
   audioWaveform: number[];
+  audio_url?: string;
   likes: number;
   comments: number;
   shares: number;
@@ -155,8 +159,12 @@ const mockStories: Story[] = [
 ];
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'All' | 'Voice' | 'Stories' | 'Lab'>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
   const [showMoreOptions, setShowMoreOptions] = useState<string | null>(null);
 
   const userLanguages = ['Yoruba / Ekiti Dialect', 'English'];
@@ -174,6 +182,75 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       ))}
     </View>
   );
+
+  const playAudio = async (clipId: string, audioUrl?: string) => {
+    try {
+      if (!audioUrl) {
+        return;
+      }
+
+      // If this clip is already playing, stop it
+      if (isPlaying === clipId && sound) {
+        await sound.stopAsync();
+        setIsPlaying(null);
+        return;
+      }
+
+      // Stop any currently playing audio
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+      }
+
+      setIsLoadingAudio(clipId);
+
+      const resolvedUrl = await getPlayableAudioUrl(audioUrl);
+      if (!resolvedUrl) {
+        setIsLoadingAudio(null);
+        return;
+      }
+
+      // Create and play the audio
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: resolvedUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
+      setIsPlaying(clipId);
+      setIsLoadingAudio(null);
+
+      // Set up cleanup when audio finishes
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setIsPlaying(null);
+          setSound(null);
+        }
+      });
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      setIsLoadingAudio(null);
+    }
+  };
+
+  const stopAudio = async () => {
+    try {
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        setSound(null);
+      }
+      setIsPlaying(null);
+    } catch {}
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
 
   const handleValidate = (clipId: string, isCorrect: boolean) => {
     const validationType = isCorrect ? 'correct' : 'incorrect';
@@ -198,7 +275,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleRemix = (clip: VoiceClip) => {
     navigation.navigate('RecordVoice', {
-      isRemix: true,
+
       originalClip: {
         id: clip.id,
         phrase: clip.phrase,
@@ -232,12 +309,12 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       onRequestClose={() => setShowMoreOptions(null)}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalBackground}
           onPress={() => setShowMoreOptions(null)}
         />
         <View style={styles.moreOptionsContent}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.optionItem}
             onPress={() => {
               setShowMoreOptions(null);
@@ -249,7 +326,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.optionDescription}>Respond to this clip</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.optionItem}
             onPress={() => {
               setShowMoreOptions(null);
@@ -265,7 +342,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             <>
               <View style={styles.optionDivider} />
               <Text style={styles.validationHeader}>Validate Pronunciation</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.optionItem, styles.validationOption]}
                 onPress={() => handleValidate(clip.id, true)}
               >
@@ -274,7 +351,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.optionDescription}>Pronunciation is accurate</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.optionItem, styles.validationOption]}
                 onPress={() => handleValidate(clip.id, false)}
               >
@@ -286,7 +363,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           )}
 
           <View style={styles.optionDivider} />
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.optionItem}
             onPress={() => {
               setShowMoreOptions(null);
@@ -340,19 +417,34 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
       {renderWaveform(clip.audioWaveform)}
 
-      <TouchableOpacity style={styles.playButton}>
-        <Ionicons name="play" size={24} color="#FFFFFF" />
+      <TouchableOpacity
+        style={styles.playButton}
+        onPress={() => {
+          if (isPlaying === clip.id) {
+            stopAudio();
+          } else {
+            playAudio(clip.id, clip.audio_url);
+          }
+        }}
+      >
+        {isLoadingAudio === clip.id ? (
+          <Ionicons name="sync" size={24} color="#FFFFFF" />
+        ) : isPlaying === clip.id ? (
+          <Ionicons name="pause" size={24} color="#FFFFFF" />
+        ) : (
+          <Ionicons name="play" size={24} color="#FFFFFF" />
+        )}
       </TouchableOpacity>
 
       <View style={styles.voiceClipActions}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleLike(clip.id, 'voice')}
         >
           <Ionicons name="heart-outline" size={20} color="#666" />
           <Text style={styles.actionText}>{clip.likes}</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleComment(clip.id, 'voice')}
         >
@@ -361,21 +453,21 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
         {canValidate(clip) && (
           <TouchableOpacity style={styles.actionButton}>
-            <Ionicons 
-              name="checkmark-circle-outline" 
-              size={20} 
-              color={clip.needsValidation ? "#F59E0B" : "#10B981"} 
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={20}
+              color={clip.needsValidation ? "#F59E0B" : "#10B981"}
             />
             <Text style={styles.actionText}>{clip.validations}</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleShare(clip.id, 'voice')}
         >
           <Ionicons name="share-outline" size={20} color="#666" />
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.moreButton}
           onPress={() => setShowMoreOptions(clip.id)}
         >
@@ -424,21 +516,21 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <View style={styles.storyActions}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleLike(story.id, 'story')}
         >
           <Ionicons name="heart-outline" size={20} color="#666" />
           <Text style={styles.actionText}>{story.likes}</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleComment(story.id, 'story')}
         >
           <Ionicons name="chatbubble-outline" size={20} color="#666" />
           <Text style={styles.actionText}>{story.comments}</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleShare(story.id, 'story')}
         >
@@ -460,14 +552,14 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       onRequestClose={() => setShowCreateModal(false)}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalBackground}
           onPress={() => setShowCreateModal(false)}
         />
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>What would you like to create?</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -483,7 +575,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
               setShowCreateModal(false);
@@ -505,7 +597,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const getFilteredContent = () => {
     const allContent = [...mockVoiceClips, ...mockStories];
-    
+
     switch (activeTab) {
       case 'Voice':
         return mockVoiceClips;
@@ -524,12 +616,12 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
-      
+
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
         <View style={styles.headerContent}>
           <Ionicons name="mic" size={24} color="#FFFFFF" />
-          <Text style={styles.headerTitle}>LinguaLink</Text>
+          <Text style={styles.headerTitle}>Lingualink AI</Text>
           <TouchableOpacity>
             <Ionicons name="ellipsis-horizontal" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -558,17 +650,17 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Content */}
-      <ScrollView 
+      <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {getFilteredContent().map((item) => 
+        {getFilteredContent().map((item) =>
           item.type === 'voice' ? renderVoiceClip(item) : renderStory(item)
         )}
       </ScrollView>
 
       {/* Floating Create Button */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.createButton}
         onPress={() => setShowCreateModal(true)}
       >
@@ -587,7 +679,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FF8A00',
-    paddingTop: height * 0.02,
     paddingBottom: height * 0.02,
     paddingHorizontal: width * 0.05,
   },

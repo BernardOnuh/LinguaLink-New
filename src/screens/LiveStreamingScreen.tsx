@@ -15,6 +15,11 @@ import {
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { useAudioPlayer } from 'expo-audio';
+import io from 'socket.io-client';
+import { supabase } from '../supabaseClient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -83,6 +88,7 @@ const gifts: Gift[] = [
 ];
 
 const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const [isLive, setIsLive] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -95,18 +101,46 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
   const [showTranslations, setShowTranslations] = useState(true);
   const [streamTitle, setStreamTitle] = useState('Learning Igbo Together! 🇳🇬');
   const [streamLanguage, setStreamLanguage] = useState('Igbo');
-  
+
+  // Camera and streaming state
+  const [permission, requestPermission] = useCameraPermissions();
+  const [cameraRef, setCameraRef] = useState<any>(null);
+  const [socket, setSocket] = useState<any>(null);
+  const [streamId, setStreamId] = useState<string | null>(null);
+  const [facing, setFacing] = useState<'front' | 'back'>('back');
+
   // Animation values
   const liveAnim = useRef(new Animated.Value(1)).current;
   const heartAnim = useRef(new Animated.Value(0)).current;
   const viewerAnim = useRef(new Animated.Value(0)).current;
+
+  // Request permissions on mount
+  useEffect(() => {
+    if (!permission?.granted) {
+      requestPermission();
+    }
+  }, []);
+
+  // Initialize camera when permissions are granted
+  useEffect(() => {
+    if (permission?.granted) {
+      initializeCamera();
+    }
+  }, [permission?.granted]);
+
+  // Initialize socket connection when going live
+  useEffect(() => {
+    if (isLive) {
+      initializeSocket();
+    }
+  }, [isLive]);
 
   useEffect(() => {
     if (isLive) {
       // Simulate viewer count changes
       const viewerTimer = setInterval(() => {
         setViewerCount(prev => Math.max(0, prev + Math.floor(Math.random() * 3) - 1));
-        
+
         // Animate viewer count change
         Animated.sequence([
           Animated.timing(viewerAnim, {
@@ -156,17 +190,121 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startLive = () => {
-    setIsLive(true);
-    setViewerCount(Math.floor(Math.random() * 20) + 5);
-    Alert.alert('🎉 You\'re Live!', 'Your stream has started successfully!');
+  // Initialize camera
+  const initializeCamera = async () => {
+    try {
+      console.log('Camera initialized successfully');
+      // Camera is now ready to use
+    } catch (error) {
+      console.error('Error initializing camera:', error);
+      Alert.alert('Error', 'Failed to access camera and microphone');
+    }
+  };
+
+  // Toggle camera between front and back
+  const toggleCamera = () => {
+    setFacing(current => (current === 'back' ? 'front' : 'back'));
+  };
+
+  // Initialize Socket.IO connection
+  const initializeSocket = () => {
+    const newSocket = io('ws://localhost:3001'); // Replace with your server URL
+    setSocket(newSocket);
+
+    newSocket.on('connect', () => {
+      console.log('Connected to streaming server');
+    });
+
+    newSocket.on('viewer-joined', (data) => {
+      setViewerCount(prev => {
+        const newCount = prev + 1;
+        updateViewerCount(newCount);
+        return newCount;
+      });
+    });
+
+    newSocket.on('viewer-left', (data) => {
+      setViewerCount(prev => {
+        const newCount = Math.max(0, prev - 1);
+        updateViewerCount(newCount);
+        return newCount;
+      });
+    });
+
+    newSocket.on('new-comment', (comment) => {
+      setComments(prev => [...prev, comment]);
+    });
+  };
+
+  // Update viewer count in database
+  const updateViewerCount = async (newCount: number) => {
+    if (!streamId) return;
+
+    try {
+      const { error } = await supabase
+        .from('live_streams')
+        .update({ viewer_count: newCount })
+        .eq('id', streamId);
+
+      if (error) {
+        console.error('Error updating viewer count:', error);
+      }
+    } catch (error) {
+      console.error('Error updating viewer count:', error);
+    }
+  };
+
+  const startLive = async () => {
+    if (!permission?.granted) {
+      Alert.alert('Permissions Required', 'Camera and microphone permissions are required.');
+      return;
+    }
+
+    try {
+      // Get current user
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        Alert.alert('Error', 'Please sign in to start a live stream');
+        return;
+      }
+
+      // Create live stream record in database
+      const { data: streamData, error: streamError } = await supabase
+        .from('live_streams')
+        .insert({
+          streamer_id: authUser.id,
+          title: streamTitle,
+          language: streamLanguage,
+          is_live: true,
+          viewer_count: 0,
+          started_at: new Date().toISOString(),
+          stream_key: `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        })
+        .select()
+        .single();
+
+      if (streamError) {
+        console.error('Error creating live stream:', streamError);
+        Alert.alert('Error', 'Failed to create live stream');
+        return;
+      }
+
+      setIsLive(true);
+      setViewerCount(0);
+      setStreamId(streamData.id);
+
+      Alert.alert('🎉 You\'re Live!', 'Your stream has started successfully!');
+    } catch (error) {
+      console.error('Error starting live stream:', error);
+      Alert.alert('Error', 'Failed to start live stream');
+    }
   };
 
   const endLive = () => {
@@ -178,15 +316,75 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
         {
           text: 'End Stream',
           style: 'destructive',
-          onPress: () => {
-            setIsLive(false);
-            setDuration(0);
-            navigation.goBack();
+          onPress: async () => {
+            try {
+              // Delete live stream from database (auto-cleanup)
+              if (streamId) {
+                const { error } = await supabase
+                  .from('live_streams')
+                  .delete()
+                  .eq('id', streamId);
+
+                if (error) {
+                  console.error('Error deleting live stream:', error);
+                } else {
+                  console.log('Live stream deleted successfully');
+                }
+              }
+
+              cleanup();
+              setIsLive(false);
+              setDuration(0);
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error ending live stream:', error);
+              // Still clean up locally even if database update fails
+              cleanup();
+              setIsLive(false);
+              setDuration(0);
+              navigation.goBack();
+            }
           },
         },
       ]
     );
   };
+
+  // Cleanup function
+  const cleanup = () => {
+    try {
+      // Disconnect socket
+      if (socket) {
+        socket.disconnect();
+        setSocket(null);
+      }
+
+      // Reset states
+      setStreamId(null);
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+    }
+  };
+
+  // Auto-cleanup when component unmounts (user navigates away)
+  useEffect(() => {
+    return () => {
+      // If user navigates away while live, delete the stream
+      if (isLive && streamId) {
+        supabase
+          .from('live_streams')
+          .delete()
+          .eq('id', streamId)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Error auto-deleting stream on unmount:', error);
+            } else {
+              console.log('Stream auto-deleted on unmount');
+            }
+          });
+      }
+    };
+  }, [isLive, streamId]);
 
   const sendComment = () => {
     if (newComment.trim()) {
@@ -201,7 +399,15 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
         message: newComment,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      
+
+      // Send comment via socket
+      if (socket && streamId) {
+        socket.emit('send-comment', {
+          comment: comment,
+          streamId: streamId,
+        });
+      }
+
       setComments([...comments, comment]);
       setNewComment('');
     }
@@ -239,7 +445,7 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
   );
 
   const renderGift = ({ item }: { item: Gift }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.giftItem}
       onPress={() => sendGift(item)}
     >
@@ -257,7 +463,7 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
           <Ionicons name="close" size={24} color="#1F2937" />
         </TouchableOpacity>
       </View>
-      
+
       <View style={styles.settingsContent}>
         <View style={styles.settingItem}>
           <Text style={styles.settingLabel}>Stream Title</Text>
@@ -310,16 +516,16 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      
+
       {/* Stream Header */}
-      <View style={styles.streamHeader}>
-        <TouchableOpacity 
+      <View style={[styles.streamHeader, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        
+
         <View style={styles.streamInfo}>
           {isLive && (
             <Animated.View style={[styles.liveIndicator, { opacity: liveAnim }]}>
@@ -335,7 +541,7 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
           )}
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.settingsButton}
           onPress={() => setShowSettings(!showSettings)}
         >
@@ -345,14 +551,29 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
 
       {/* Main Video Area */}
       <View style={styles.videoArea}>
-        {isVideoOff ? (
+        {!permission?.granted ? (
+          <View style={styles.videoOffContainer}>
+            <Ionicons name="camera-outline" size={60} color="#9CA3AF" />
+            <Text style={styles.videoOffText}>Camera permission required</Text>
+            <TouchableOpacity
+              style={styles.permissionButton}
+              onPress={requestPermission}
+            >
+              <Text style={styles.permissionButtonText}>Grant Permission</Text>
+            </TouchableOpacity>
+          </View>
+        ) : isVideoOff ? (
           <View style={styles.videoOffContainer}>
             <Ionicons name="videocam-off" size={60} color="#9CA3AF" />
             <Text style={styles.videoOffText}>Camera is off</Text>
           </View>
         ) : (
           <View style={styles.videoContainer}>
-            <Text style={styles.videoPlaceholder}>📹 Live Camera Feed</Text>
+            <CameraView
+              style={styles.camera}
+              facing={facing}
+              ref={(ref: any) => setCameraRef(ref)}
+            />
             <View style={styles.streamOverlay}>
               <View style={styles.streamTitle}>
                 <Text style={styles.streamTitleText}>{streamTitle}</Text>
@@ -387,25 +608,34 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
         <View style={styles.commentsHeader}>
           <Text style={styles.commentsTitle}>Live Chat</Text>
           <TouchableOpacity onPress={() => setShowTranslations(!showTranslations)}>
-            <Ionicons 
-              name={showTranslations ? "language" : "language-outline"} 
-              size={20} 
-              color="#10B981" 
+            <Ionicons
+              name={showTranslations ? "language" : "language-outline"}
+              size={20}
+              color="#10B981"
             />
           </TouchableOpacity>
         </View>
-        
-        <FlatList
-          data={comments}
-          renderItem={renderComment}
-          keyExtractor={(item) => item.id}
+
+        <ScrollView
           style={styles.commentsList}
           showsVerticalScrollIndicator={false}
-        />
+        >
+          {comments.map((item) => (
+            <View key={item.id} style={styles.commentItem}>
+              <Text style={styles.commentUser}>{item.user.name}:</Text>
+              <Text style={styles.commentMessage}>
+                {showTranslations && item.isTranslated ? item.translatedMessage : item.message}
+              </Text>
+              {showTranslations && item.isTranslated && (
+                <Text style={styles.originalMessage}>Original: {item.originalMessage}</Text>
+              )}
+            </View>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Bottom Controls */}
-      <View style={styles.bottomControls}>
+      <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 12 }]}>
         {/* Comment Input */}
         <View style={styles.commentInputContainer}>
           <TextInput
@@ -415,7 +645,7 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
             onChangeText={setNewComment}
             placeholderTextColor="#9CA3AF"
           />
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.sendButton}
             onPress={sendComment}
           >
@@ -425,36 +655,48 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
 
         {/* Control Buttons */}
         <View style={styles.controlButtons}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlButton, isMuted && styles.activeControlButton]}
             onPress={() => setIsMuted(!isMuted)}
           >
-            <Ionicons 
-              name={isMuted ? "mic-off" : "mic"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isMuted ? "mic-off" : "mic"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlButton, isVideoOff && styles.activeControlButton]}
             onPress={() => setIsVideoOff(!isVideoOff)}
           >
-            <Ionicons 
-              name={isVideoOff ? "videocam-off" : "videocam"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isVideoOff ? "videocam-off" : "videocam"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          {/* Camera Switch Button */}
+          <TouchableOpacity
+            style={[styles.controlButton, { backgroundColor: '#8B5CF6' }]}
+            onPress={toggleCamera}
+          >
+            <Ionicons
+              name="camera-reverse"
+              size={24}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.controlButton}
             onPress={() => setShowGifts(!showGifts)}
           >
             <Ionicons name="gift" size={24} color="#FFFFFF" />
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.controlButton}
             onPress={() => Alert.alert('Effects', 'Live effects coming soon!')}
           >
@@ -462,20 +704,21 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation, route }) => {
           </TouchableOpacity>
 
           {!isLive ? (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.startLiveButton}
               onPress={startLive}
             >
               <Text style={styles.startLiveText}>Go Live</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.endLiveButton}
               onPress={endLive}
             >
               <Text style={styles.endLiveText}>End</Text>
             </TouchableOpacity>
           )}
+
         </View>
       </View>
 
@@ -595,9 +838,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
+  cameraPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  camera: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  rtcView: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   videoPlaceholder: {
     fontSize: 48,
     color: '#9CA3AF',
+  },
+  cameraStatusText: {
+    fontSize: 16,
+    color: '#10B981',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  permissionButton: {
+    backgroundColor: '#FF8A00',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  permissionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   videoOffContainer: {
     flex: 1,

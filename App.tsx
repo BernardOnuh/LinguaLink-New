@@ -1,30 +1,40 @@
 // App.tsx - Updated with new navigation routes
-import React, { useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useState, useEffect, useRef } from 'react';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/context/AuthProvider';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as Linking from 'expo-linking';
+import * as Device from 'expo-device';
+// import { deepLinkHandler } from './src/utils/deepLinking'; // No longer used; rely on Navigation linking prop
+import { supabase } from './src/supabaseClient';
 
 // Import all screens
 
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import NewPasswordScreen from './src/screens/NewPasswordScreen';
 import EnhancedHomeScreen from './src/screens/EnhancedHomeScreen';
 import RecordVoiceScreen from './src/screens/RecordVoiceScreen';
+import RecordVideoScreen from './src/screens/RecordVideoScreen';
 import TellStoryScreen from './src/screens/TellStoryScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import RewardsScreen from './src/screens/RewardsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import UserProfileScreen from './src/screens/UserProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import InvitesScreen from './src/screens/InvitesScreen';
 import ValidationScreen from './src/screens/ValidationScreen';
 
 // Import new Chat screens
 import ChatListScreen from './src/screens/ChatListScreen';
 import ChatDetailScreen from './src/screens/ChatDetailScreen';
+import GroupsScreen from './src/screens/GroupsScreen';
 import GroupChatScreen from './src/screens/GroupChatScreen';
 import VoiceCallScreen from './src/screens/VoiceCallScreen';
 import VideoCallScreen from './src/screens/VideoCallScreen';
@@ -33,9 +43,13 @@ import GroupCallScreen from './src/screens/GroupCallScreen';
 // Import new feature screens
 import TurnVerseScreen from './src/screens/TurnVerseScreen';
 import LiveStreamingScreen from './src/screens/LiveStreamingScreen';
+import LiveViewerScreen from './src/screens/LiveViewerScreen';
 import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import AuthCallbackScreen from './src/screens/AuthCallbackScreen';
+import InterestSelectionScreen from './src/screens/InterestSelectionScreen';
+import CreateStoryScreen from './src/screens/CreateStoryScreen';
+import StoryViewScreen from './src/screens/StoryViewScreen';
 
 // Import navigation types
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -75,12 +89,15 @@ export type RootStackParamList = {
   Welcome: undefined;
   SignUp: undefined;
   SignIn: undefined;
+  ForgotPassword: undefined;
+  NewPassword: { resetCode?: string } | undefined;
   VerifyEmail: { email?: string } | undefined;
+  OTPVerification: { email: string };
   AuthCallback: { code?: string } | undefined;
+  InterestSelection: undefined;
   MainTabs: undefined;
   RecordVoice: {
     mode?: 'record' | 'upload';
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;
@@ -91,7 +108,6 @@ export type RootStackParamList = {
   } | undefined;
   RecordVideo: {
     mode?: 'record' | 'upload';
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;
@@ -102,6 +118,9 @@ export type RootStackParamList = {
   } | undefined;
   TellStory: undefined;
   Settings: undefined;
+  UserProfile: {
+    userId: string;
+  };
   Validation: {
     clipId?: string;
     language?: string;
@@ -133,15 +152,15 @@ export type RootStackParamList = {
     isHost?: boolean;
     roomId?: string;
   };
+  LiveViewer: {
+    roomId: string;
+  };
   CreateGroup: undefined;
   CreateStory: undefined;
   StoryView: {
     story: Story;
   };
   ContactDiscovery: undefined;
-  UserProfile: {
-    user: Contact;
-  };
 };
 
 export type TabParamList = {
@@ -196,6 +215,26 @@ const CreateModal = () => {
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>What would you like to create?</Text>
 
+          <ScrollView
+            style={styles.createModalScroll}
+            contentContainerStyle={styles.createModalScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+          <TouchableOpacity
+            style={styles.createOption}
+            onPress={() => {
+              setShowCreateModal(false);
+              navigation.navigate('CreateStory');
+            }}
+          >
+            <View style={[styles.createOptionIcon, styles.blueIcon]}>
+              <Ionicons name="images" size={24} color="#3B82F6" />
+            </View>
+            <View style={styles.createOptionContent}>
+              <Text style={styles.createOptionTitle}>Create Story</Text>
+              <Text style={styles.createOptionDescription}>Combine clips, text and media</Text>
+            </View>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -260,6 +299,8 @@ const CreateModal = () => {
             </View>
           </TouchableOpacity>
 
+
+
           <TouchableOpacity
             style={styles.createOption}
             onPress={() => {
@@ -307,6 +348,7 @@ const CreateModal = () => {
               <Text style={styles.createOptionDescription}>Check leaderboard and rewards</Text>
             </View>
           </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -315,10 +357,45 @@ const CreateModal = () => {
 
 const MainTabs = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const { user } = useAuth();
+  const [unreadTotal, setUnreadTotal] = useState<number>(0);
+
+  // Compute unread badge count using RPC and keep it updated via realtime
+  useEffect(() => {
+    let mounted = true;
+    const fetchUnread = async () => {
+      if (!user?.id) return;
+      try {
+        const { data, error } = await supabase.rpc('get_conversations_with_unread');
+        if (!mounted) return;
+        if (error) return;
+        const total = (data || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
+        setUnreadTotal(total);
+      } catch {}
+    };
+    fetchUnread();
+    const channel = supabase
+      .channel('tabs-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
+        const m = payload.new;
+        if (m.sender_id !== user?.id) {
+          setUnreadTotal(prev => prev + 1);
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, (payload: any) => {
+        const r = payload.new;
+        if (r.user_id === user?.id) {
+          setUnreadTotal(prev => Math.max(0, prev - 1));
+        }
+      })
+      .subscribe();
+    return () => { mounted = false; channel.unsubscribe(); };
+  }, [user?.id]);
 
   return (
     <CreateModalContext.Provider value={{ showCreateModal, setShowCreateModal }}>
       <Tab.Navigator
+        key={user?.id || 'tabs'}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarIcon: ({ focused, color, size }) => {
@@ -393,7 +470,7 @@ const MainTabs = () => {
           component={ChatListScreen}
           options={{
             tabBarLabel: 'Chat',
-            tabBarBadge: 3, // Show unread messages count
+            tabBarBadge: unreadTotal > 0 ? unreadTotal : undefined,
           }}
         />
         <Tab.Screen
@@ -432,8 +509,15 @@ const AuthStack = () => (
           }}
         />
         <Stack.Screen
-          name="VerifyEmail"
-          component={VerifyEmailScreen}
+          name="ForgotPassword"
+          component={ForgotPasswordScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="NewPassword"
+          component={NewPasswordScreen}
           options={{
             animation: 'slide_from_right',
           }}
@@ -445,17 +529,32 @@ const AuthStack = () => (
             animation: 'fade',
           }}
         />
+        <Stack.Screen
+          name="VerifyEmail"
+          component={VerifyEmailScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+
   </Stack.Navigator>
 );
 
-const MainStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
+const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }: { initialRouteName?: keyof RootStackParamList }) => (
+  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName}>
         <Stack.Screen
           name="MainTabs"
           component={MainTabs}
           options={{
             gestureEnabled: false,
             animation: 'fade',
+          }}
+        />
+        <Stack.Screen
+          name="InterestSelection"
+          component={InterestSelectionScreen}
+          options={{
+            animation: 'slide_from_right',
           }}
         />
 
@@ -470,7 +569,7 @@ const MainStack = () => (
         />
         <Stack.Screen
           name="RecordVideo"
-          component={RecordVoiceScreen} // You can create a separate RecordVideoScreen
+          component={RecordVideoScreen}
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
@@ -503,6 +602,15 @@ const MainStack = () => (
           }}
         />
 
+        <Stack.Screen
+          name="Invites"
+          component={InvitesScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+
+
         {/* Rewards Screen */}
         <Stack.Screen
           name="Rewards"
@@ -513,6 +621,13 @@ const MainStack = () => (
         />
 
         {/* Chat Screens */}
+        <Stack.Screen
+          name="Groups"
+          component={GroupsScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
         <Stack.Screen
           name="ChatDetail"
           component={ChatDetailScreen}
@@ -594,6 +709,15 @@ const MainStack = () => (
             headerShown: false,
           }}
         />
+        <Stack.Screen
+          name="LiveViewer"
+          component={LiveViewerScreen}
+          options={{
+            animation: 'slide_from_bottom',
+            presentation: 'fullScreenModal',
+            headerShown: false,
+          }}
+        />
 
         {/* Social Features */}
         <Stack.Screen
@@ -605,7 +729,7 @@ const MainStack = () => (
         />
         <Stack.Screen
           name="UserProfile"
-          component={ProfileScreen} // Can reuse or create separate UserProfileScreen
+          component={UserProfileScreen}
           options={{
             animation: 'slide_from_right',
           }}
@@ -614,7 +738,7 @@ const MainStack = () => (
         {/* Story Features */}
         <Stack.Screen
           name="CreateStory"
-          component={TellStoryScreen} // Can reuse or create separate CreateStoryScreen
+          component={CreateStoryScreen}
           options={{
             animation: 'slide_from_bottom',
             presentation: 'modal',
@@ -622,7 +746,7 @@ const MainStack = () => (
         />
         <Stack.Screen
           name="StoryView"
-          component={TellStoryScreen} // Can create separate StoryViewScreen
+          component={StoryViewScreen}
           options={{
             animation: 'fade',
             presentation: 'fullScreenModal',
@@ -642,9 +766,93 @@ const MainStack = () => (
   </Stack.Navigator>
 );
 
+
 const AuthGate = () => {
   const { session, loading } = useAuth();
-  if (loading) {
+  const [checking, setChecking] = React.useState(false);
+  const [onboardingComplete, setOnboardingComplete] = React.useState<boolean | null>(null);
+
+
+  const checkOnboarding = React.useCallback(async () => {
+    if (!session) {
+      setOnboardingComplete(null);
+      return;
+    }
+    setChecking(true);
+    try {
+      // Try profiles flag first
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('has_completed_onboarding')
+        .eq('id', session.user.id)
+        .single();
+
+      if (error) {
+        console.error('AuthGate: profile fetch error', error);
+        setOnboardingComplete(false);
+        return;
+      }
+
+      let completed = data?.has_completed_onboarding === true;
+
+      // Fallback: if flag missing, infer from user_interests or interests array
+      if (!completed) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('interests')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!profileError && profileData?.interests && Array.isArray(profileData.interests) && profileData.interests.length > 0) {
+          completed = true;
+        }
+      }
+
+      setOnboardingComplete(completed);
+    } catch (e) {
+      console.error('AuthGate: onboarding check failed', e);
+      setOnboardingComplete(false);
+    } finally {
+      setChecking(false);
+    }
+  }, [session]);
+
+  React.useEffect(() => {
+    if (session && !loading) {
+      checkOnboarding();
+    }
+  }, [session, loading, checkOnboarding]);
+
+
+  // Listen for changes to the profiles table to detect when onboarding is completed
+  React.useEffect(() => {
+    if (!session) return;
+
+    const subscription = supabase
+      .channel('profiles-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          console.log('Profile updated:', payload);
+          if (payload.new.has_completed_onboarding === true) {
+            setOnboardingComplete(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [session]);
+
+  if (loading || (session && (checking || onboardingComplete === null))) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
         <ActivityIndicator size="large" color="#FF8A00" />
@@ -652,13 +860,67 @@ const AuthGate = () => {
       </View>
     );
   }
-  return session ? <MainStack /> : <AuthStack />;
+
+  // No session → auth flow
+  if (!session) {
+    return <AuthStack key="auth" />;
+  }
+
+  // Session present; route based on onboarding
+  if (onboardingComplete === false) {
+    return <MainStack initialRouteName="InterestSelection" />;
+  }
+
+  // Onboarding complete → main app
+  return <MainStack key={session.user?.id || 'main'} />;
 };
 
 export default function App() {
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
+  const [navigationReady, setNavigationReady] = useState(false);
+
+  // Rely solely on React Navigation's linking prop; do not manually handle deep links here
+
+  // Deep linking configuration
+  const linking = {
+    prefixes: ['exp://', 'exp+lingualink://', 'lingualink://'],
+    config: {
+      screens: {
+        Welcome: 'welcome',
+        SignUp: 'signup',
+        SignIn: 'signin',
+        ForgotPassword: 'forgot-password',
+        NewPassword: 'new-password',
+        VerifyEmail: 'verify-email',
+        AuthCallback: 'auth-callback',
+        InterestSelection: 'interests',
+        MainTabs: 'main',
+        RecordVoice: 'record-voice',
+        RecordVideo: 'record-video',
+        TellStory: 'tell-story',
+        Validation: 'validation',
+        Settings: 'settings',
+        Rewards: 'rewards',
+        Groups: 'groups',
+        ChatDetail: 'chat/:id',
+        GroupChat: 'group/:id',
+        VoiceCall: 'call/voice/:id',
+        VideoCall: 'call/video/:id',
+        GroupCall: 'call/group/:id',
+        TurnVerse: 'games/turnverse',
+        LiveStream: 'live/:roomId',
+        ContactDiscovery: 'discover',
+      },
+    },
+  };
+
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer
+        ref={navigationRef}
+        linking={linking}
+        onReady={() => setNavigationReady(true)}
+      >
         <AuthGate />
       </NavigationContainer>
     </AuthProvider>
@@ -697,7 +959,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 16,
+  },
+  createModalScroll: {
+    maxHeight: 520,
+  },
+  createModalScrollContent: {
+    paddingBottom: 24,
   },
   createModalTitle: {
     fontSize: 20,

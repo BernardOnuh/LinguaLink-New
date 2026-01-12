@@ -43,6 +43,7 @@ export interface Story {
   thumbnail: string;
   timestamp: string;
   viewed: boolean;
+  created_at?: string; // Optional for sorting
 }
 
 // Define navigation parameter lists
@@ -52,7 +53,6 @@ export type RootStackParamList = {
   SignIn: undefined;
   MainTabs: undefined;
   RecordVoice: {
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;
@@ -62,7 +62,6 @@ export type RootStackParamList = {
     };
   } | undefined;
   RecordVideo: {
-    isRemix?: boolean;
     isDuet?: boolean;
     originalClip?: {
       id: string;
@@ -82,6 +81,7 @@ export type RootStackParamList = {
   ChatDetail: {
     contact: Contact;
   };
+  Groups: undefined;
   VoiceCall: {
     contact: Contact;
   };
@@ -112,6 +112,7 @@ export type RootStackParamList = {
   UserProfile: {
     user: Contact | SocialUserProfile;
   };
+  Invites: undefined;
 };
 
 export type TabParamList = {

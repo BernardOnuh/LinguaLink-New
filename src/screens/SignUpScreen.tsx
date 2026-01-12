@@ -1,5 +1,5 @@
 // src/screens/SignUpScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,12 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import LanguagePicker from '../components/LanguagePicker';
 import { useAuth } from '../context/AuthProvider';
+import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
@@ -46,6 +48,7 @@ interface Language {
 }
 
 const SignUpScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { signUp, signInWithGoogle, loading } = useAuth();
   const [user, setUser] = useState<User>({
     fullName: '',
@@ -57,9 +60,99 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>();
+  const [inviteCode, setInviteCode] = useState<string>('');
+  const [country, setCountry] = useState<string>('');
+  const [stateRegion, setStateRegion] = useState<string>('');
+  const [city, setCity] = useState<string>('');
+  const [lga, setLga] = useState<string>('');
+
+  // Real-time validation states
+  const [emailError, setEmailError] = useState<string>('');
+  const [usernameError, setUsernameError] = useState<string>('');
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Real-time email validation
+  const validateEmail = async (email: string) => {
+    if (!email) {
+      setEmailError('');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      const { data: existingEmail } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingEmail) {
+        setEmailError('An account with this email already exists');
+      } else {
+        setEmailError('');
+      }
+    } catch (error) {
+      setEmailError('Error checking email availability');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Real-time username validation
+  const validateUsername = async (username: string) => {
+    if (!username) {
+      setUsernameError('');
+      return;
+    }
+
+    if (username.length < 3) {
+      setUsernameError('Username must be at least 3 characters');
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      const { data: existingUsername } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (existingUsername) {
+        setUsernameError('Username is already taken');
+      } else {
+        setUsernameError('');
+      }
+    } catch (error) {
+      setUsernameError('Error checking username availability');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Debounced validation
+  useEffect(() => {
+    const emailTimer = setTimeout(() => {
+      if (user.email) validateEmail(user.email);
+    }, 500);
+    return () => clearTimeout(emailTimer);
+  }, [user.email]);
+
+  useEffect(() => {
+    const usernameTimer = setTimeout(() => {
+      if (user.username) validateUsername(user.username);
+    }, 500);
+    return () => clearTimeout(usernameTimer);
+  }, [user.username]);
 
   const handleSignUp = async () => {
-    if (!user.fullName || !user.username || !user.email || !user.password || !user.primaryLanguage) {
+    if (!user.fullName || !user.username || !user.email || !user.password || !user.primaryLanguage || !country || !stateRegion || !city || !lga) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
@@ -67,9 +160,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(user.email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+    if (emailError || usernameError) {
+      Alert.alert('Error', 'Please fix the validation errors before continuing');
       return;
     }
 
@@ -79,6 +171,11 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       fullName: user.fullName,
       username: user.username,
       primaryLanguage: user.primaryLanguage,
+      inviteCode: inviteCode?.trim() || undefined,
+      country: country || undefined,
+      state: stateRegion || undefined,
+      city: city || undefined,
+      lga: lga || undefined,
     });
     if (err) {
       Alert.alert('Sign Up Failed', err);
@@ -93,6 +190,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
     setUser({ ...user, primaryLanguage: `${language.name}${language.dialect ? ` / ${language.dialect}` : ''}` });
   };
 
+
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
@@ -101,17 +200,17 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         {/* Header */}
-        <View style={styles.formHeader}>
+        <View style={[styles.formHeader, { paddingTop: insets.top + 16 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.formTitle}>Join LinguaLink</Text>
+          <Text style={styles.formTitle}>Join Lingualink AI</Text>
         </View>
         <Text style={styles.formSubtitle}>Preserve languages through voice and stories</Text>
 
         <ScrollView
           style={styles.formContent}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -133,7 +232,11 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           {/* Username */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Username</Text>
-            <View style={styles.inputContainer}>
+            <View style={[
+              styles.inputContainer,
+              usernameError ? styles.inputContainerError : null,
+              !usernameError && user.username ? styles.inputContainerSuccess : null
+            ]}>
               <Text style={styles.atSymbol}>@</Text>
               <TextInput
                 style={[styles.textInput, styles.usernameInput]}
@@ -143,14 +246,29 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                 onChangeText={(text) => setUser({ ...user, username: text })}
                 autoCapitalize="none"
               />
+              {isValidating && user.username ? (
+                <Ionicons name="time-outline" size={16} color="#6B7280" />
+              ) : usernameError ? (
+                <Ionicons name="close-circle" size={16} color="#EF4444" />
+              ) : !usernameError && user.username ? (
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+              ) : null}
             </View>
-            <Text style={styles.inputHint}>This will be your public display name</Text>
+            {usernameError ? (
+              <Text style={styles.errorText}>{usernameError}</Text>
+            ) : (
+              <Text style={styles.inputHint}>This will be your public display name</Text>
+            )}
           </View>
 
           {/* Email */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email Address</Text>
-            <View style={styles.inputContainer}>
+            <View style={[
+              styles.inputContainer,
+              emailError ? styles.inputContainerError : null,
+              !emailError && user.email ? styles.inputContainerSuccess : null
+            ]}>
               <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.textInput}
@@ -161,7 +279,17 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                 value={user.email}
                 onChangeText={(text) => setUser({ ...user, email: text })}
               />
+              {isValidating && user.email ? (
+                <Ionicons name="time-outline" size={16} color="#6B7280" />
+              ) : emailError ? (
+                <Ionicons name="close-circle" size={16} color="#EF4444" />
+              ) : !emailError && user.email ? (
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+              ) : null}
             </View>
+            {emailError ? (
+              <Text style={styles.errorText}>{emailError}</Text>
+            ) : null}
           </View>
 
           {/* Password */}
@@ -208,6 +336,80 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
           </View>
 
+          {/* Location */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Country</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="flag-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Nigeria"
+                placeholderTextColor="#999"
+                value={country}
+                onChangeText={setCountry}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>State</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="map-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Lagos State"
+                placeholderTextColor="#999"
+                value={stateRegion}
+                onChangeText={setStateRegion}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>City</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="business-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Ikeja"
+                placeholderTextColor="#999"
+                value={city}
+                onChangeText={setCity}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Local Government</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="location-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Ikeja LGA"
+                placeholderTextColor="#999"
+                value={lga}
+                onChangeText={setLga}
+              />
+            </View>
+          </View>
+
+          {/* Invite Code (Optional) */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Invite code (optional)</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="key-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Enter invite code (if you have one)"
+                placeholderTextColor="#999"
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                autoCapitalize="characters"
+              />
+            </View>
+            <Text style={styles.inputHint}>Don’t have one? Leave this blank.</Text>
+          </View>
+
           {/* Welcome Pack */}
           <View style={styles.welcomePack}>
             <View style={styles.welcomePackIcon}>
@@ -225,7 +427,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           }
           <TouchableOpacity style={styles.primaryButton} onPress={handleSignUp} disabled={loading}>
             <Ionicons name="sparkles" size={20} color="#FFFFFF" style={styles.buttonIcon} />
-            <Text style={styles.primaryButtonText}>{loading ? 'Creating...' : 'Join LinguaLink'}</Text>
+            <Text style={styles.primaryButtonText}>{loading ? 'Creating...' : 'Join Lingualink AI'}</Text>
           </TouchableOpacity>
 
           {/* Google Sign Up */}
@@ -251,6 +453,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         onSelect={handleLanguageSelect}
         selectedLanguage={selectedLanguage}
       />
+
+
     </SafeAreaView>
   );
 };
@@ -267,7 +471,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: width * 0.05,
-    paddingTop: height * 0.06,
     paddingBottom: height * 0.02,
   },
   formTitle: {
@@ -331,6 +534,11 @@ const styles = StyleSheet.create({
     fontSize: width * 0.03,
     color: '#6B7280',
     marginTop: 4,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   dropdownContainer: {
     flexDirection: 'row',
@@ -428,6 +636,22 @@ const styles = StyleSheet.create({
     fontSize: width * 0.035,
     color: '#FF8A00',
     fontWeight: '600',
+  },
+  inputContainerError: {
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    backgroundColor: '#FEF2F2',
+  },
+  inputContainerSuccess: {
+    borderColor: '#10B981',
+    borderWidth: 1,
+    backgroundColor: '#F0FDF4',
+  },
+  errorText: {
+    fontSize: width * 0.03,
+    color: '#EF4444',
+    marginTop: 4,
+    fontWeight: '500',
   },
 });
 

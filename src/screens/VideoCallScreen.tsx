@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Update the import to use the correct types from App.tsx
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App'; // Adjust path as needed
@@ -22,13 +23,14 @@ const { width, height } = Dimensions.get('window');
 type Props = NativeStackScreenProps<RootStackParamList, 'VideoCall'>;
 
 const VideoCallScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { contact } = route.params;
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
-  
+
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const translateAnim = useRef(new Animated.Value(0)).current;
@@ -81,8 +83,8 @@ const VideoCallScreen: React.FC<Props> = ({ route, navigation }) => {
       'Are you sure you want to end this video call?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'End Call', 
+        {
+          text: 'End Call',
           style: 'destructive',
           onPress: () => navigation.goBack()
         }
@@ -113,16 +115,16 @@ const VideoCallScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      
+
       {/* Call Status Header */}
-      <View style={styles.statusHeader}>
+      <View style={[styles.statusHeader, { paddingTop: insets.top + 10 }]}>
         <View style={styles.statusInfo}>
           <Text style={styles.contactName}>{contact.name}</Text>
           <Text style={styles.callStatus}>
             {isConnected ? `Video Call • ${formatDuration(callDuration)}` : 'Connecting...'}
           </Text>
         </View>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.minimizeButton}
           onPress={() => {
             // Here you could implement minimize functionality
@@ -187,52 +189,52 @@ const VideoCallScreen: React.FC<Props> = ({ route, navigation }) => {
       <View style={styles.controlsContainer}>
         <View style={styles.controlsRow}>
           {/* Mute Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.controlButton,
               isMuted && styles.activeControlButton
             ]}
             onPress={toggleMute}
           >
-            <Ionicons 
-              name={isMuted ? "mic-off" : "mic"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isMuted ? "mic-off" : "mic"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
           {/* Video Toggle Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.controlButton,
               isVideoOff && styles.activeControlButton
             ]}
             onPress={toggleVideo}
           >
-            <Ionicons 
-              name={isVideoOff ? "videocam-off" : "videocam"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isVideoOff ? "videocam-off" : "videocam"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
           {/* Speaker Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.controlButton,
               isSpeakerOn && styles.activeControlButton
             ]}
             onPress={toggleSpeaker}
           >
-            <Ionicons 
-              name={isSpeakerOn ? "volume-high" : "volume-low"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isSpeakerOn ? "volume-high" : "volume-low"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
           {/* Switch Camera Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.controlButton}
             onPress={switchCamera}
           >
@@ -240,7 +242,7 @@ const VideoCallScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
 
           {/* End Call Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlButton, styles.endCallButton]}
             onPress={endCall}
           >
@@ -254,12 +256,12 @@ const VideoCallScreen: React.FC<Props> = ({ route, navigation }) => {
             <Ionicons name="chatbubble" size={20} color="#9CA3AF" />
             <Text style={styles.additionalButtonText}>Chat</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.additionalButton}>
             <Ionicons name="people" size={20} color="#9CA3AF" />
             <Text style={styles.additionalButtonText}>Add</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.additionalButton}>
             <Ionicons name="ellipsis-horizontal" size={20} color="#9CA3AF" />
             <Text style={styles.additionalButtonText}>More</Text>
@@ -280,7 +282,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingBottom: 10,
   },
   statusInfo: {
     flex: 1,

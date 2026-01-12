@@ -1,5 +1,4 @@
-// src/screens/ValidationScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,21 +8,39 @@ import {
   StatusBar,
   Dimensions,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { supabase } from '../supabaseClient';
+import { useAudioPlayer } from 'expo-audio';
+import { getPlayableAudioUrl } from '../utils/storage';
+import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
-type ValidationScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'Validation'
->;
+// Helper to extract original prompt from nested remix chains
+const extractOriginalPrompt = (phrase: string) => {
+  // If the phrase contains nested remix text, extract the original
+  if (phrase.includes('"Create your own version of "') || phrase.includes('"Respond to "')) {
+    // Find the innermost quoted text (the original prompt)
+    const matches = phrase.match(/"([^"]*)"(?: by [^"]*)?$/);
+    if (matches && matches[1]) {
+      // Check if this is the actual original (not another nested remix)
+      const extracted = matches[1];
+      if (!extracted.includes('"Create your own version of "') && !extracted.includes('"Respond to "')) {
+        return extracted;
+      }
+      // If it's still nested, try to find the deepest level
+      return extractOriginalPrompt(extracted);
+    }
+  }
+  // If no nested text found, return the phrase as-is
+  return phrase;
+};
 
-interface Props {
-  navigation: ValidationScreenNavigationProp;
-}
+type Props = NativeStackScreenProps<RootStackParamList, 'Validation'>;
 
 interface ValidationClip {
   id: string;
@@ -47,20 +64,150 @@ const mockValidationClip: ValidationClip = {
   context: 'Common greeting used in the morning and afternoon'
 };
 
-const ValidationScreen: React.FC<Props> = ({ navigation }) => {
+const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
+  const { user } = useAuth();
+  const clipId = route?.params?.clipId;
   const [hasValidated, setHasValidated] = useState(false);
   const [validationResult, setValidationResult] = useState<'correct' | 'incorrect' | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [clip, setClip] = useState<{
+    id: string;
+    phrase?: string;
+    language?: string;
+    dialect?: string;
+    audio_url?: string;
+  } | null>(null);
+  const audioPlayer = useAudioPlayer();
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [existingValidationId, setExistingValidationId] = useState<string | null>(null);
 
-  const handleValidation = (isCorrect: boolean) => {
+  // Load clip details if needed
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!clipId) return;
+      setLoading(true);
+      try {
+        const { data, error: qErr } = await supabase
+          .from('voice_clips')
+          .select('id, phrase, language, dialect, audio_url')
+          .eq('id', clipId)
+          .maybeSingle();
+        if (qErr) throw qErr;
+        if (mounted) {
+          setClip(data ?? { id: clipId });
+          setError(null);
+        }
+      } catch (e: any) {
+        if (mounted) setError(e?.message || 'Failed to load clip');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [clipId]);
+
+  // Load current user's existing validation (if any)
+  useEffect(() => {
+    const fetchExisting = async () => {
+      if (!user?.id || !clipId) return;
+      const { data, error: vErr } = await supabase
+        .from('validations')
+        .select('id, is_approved')
+        .eq('voice_clip_id', clipId)
+        .eq('validator_id', user.id)
+        .maybeSingle();
+      if (!vErr && data) {
+        setExistingValidationId(data.id);
+        setHasValidated(true);
+        setValidationResult(data.is_approved ? 'correct' : 'incorrect');
+      } else {
+        setExistingValidationId(null);
+        setHasValidated(false);
+        setValidationResult(null);
+      }
+    };
+    fetchExisting();
+  }, [user?.id, clipId]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
+      }
+    };
+  }, [audioPlayer]);
+
+  const handleValidation = async (isCorrect: boolean) => {
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to validate clips.');
+      return;
+    }
+    if (!clipId) return;
+
+    // If already validated by this user, offer to remove
+    if (existingValidationId) {
+      Alert.alert(
+        'Remove your validation?',
+        'You already validated this clip. Do you want to remove your validation?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              const { error: delErr } = await supabase
+                .from('validations')
+                .delete()
+                .eq('id', existingValidationId);
+              if (delErr) {
+                Alert.alert('Error', delErr.message || 'Failed to remove validation');
+                return;
+              }
+              setExistingValidationId(null);
+              setHasValidated(false);
+              setValidationResult(null);
+              Alert.alert('Removed', 'Your validation has been removed.');
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // Otherwise, submit new validation
     setValidationResult(isCorrect ? 'correct' : 'incorrect');
     setHasValidated(true);
-    
-    const points = isCorrect ? 10 : 5; // Points for validation
-    const message = isCorrect 
-      ? `Great! You've confirmed this pronunciation is correct. +${points} points earned!`
-      : `Thank you for the feedback. This helps the community learn. +${points} points earned!`;
-    
-    Alert.alert('Validation Submitted', message);
+    try {
+      const { data: insData, error: insertErr } = await supabase
+        .from('validations')
+        .insert({
+          voice_clip_id: clipId,
+          validator_id: user.id,
+          validation_type: 'pronunciation',
+          rating: isCorrect ? 4 : 2,
+          is_approved: isCorrect,
+        })
+        .select('id')
+        .single();
+      if (insertErr) throw insertErr;
+      if (insData?.id) setExistingValidationId(insData.id);
+
+      const points = isCorrect ? 10 : 5;
+      const message = isCorrect
+        ? `Great! You've confirmed this pronunciation is correct. +${points} points earned!`
+        : `Thank you for the feedback. This helps the community learn. +${points} points earned!`;
+      Alert.alert('Validation Submitted', message);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to submit validation');
+      setHasValidated(false);
+      setValidationResult(null);
+    }
   };
 
   const handleSkip = () => {
@@ -85,6 +232,34 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
+  const handlePlay = async () => {
+    if (!clip?.audio_url) {
+      Alert.alert('No audio', 'This clip does not have an audio file.');
+      return;
+    }
+    try {
+      // If already playing for this screen, toggle pause/stop
+      if (audioPlayer.playing) {
+        audioPlayer.pause();
+        return;
+      }
+
+      setAudioLoading(true);
+      const uri = await getPlayableAudioUrl(clip.audio_url);
+      if (!uri) {
+        setAudioLoading(false);
+        Alert.alert('Error', 'Unable to load audio file');
+        return;
+      }
+      audioPlayer.replace(uri);
+      audioPlayer.play();
+      setAudioLoading(false);
+    } catch (e) {
+      setAudioLoading(false);
+      Alert.alert('Error', 'Failed to play audio');
+    }
+  };
+
   const renderWaveform = (waveform: number[]) => (
     <View style={styles.waveformContainer}>
       {waveform.map((height, index) => (
@@ -102,7 +277,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -119,7 +294,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.languageHeader}>
           <Ionicons name="globe" size={20} color="#FF8A00" />
           <Text style={styles.languageTitle}>
-            {mockValidationClip.language} / {mockValidationClip.dialect}
+            {clip?.language || '—'}{clip?.dialect ? ` / ${clip?.dialect}` : ''}
           </Text>
         </View>
         <Text style={styles.languageDescription}>
@@ -130,7 +305,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
       {/* Clip Information */}
       <View style={styles.clipCard}>
         <View style={styles.clipHeader}>
-          <Text style={styles.clipUser}>Recording by {mockValidationClip.user}</Text>
+          <Text style={styles.clipUser}>Recording</Text>
           <View style={styles.validationBadge}>
             <Ionicons name="help-circle" size={12} color="#F59E0B" />
             <Text style={styles.validationBadgeText}>Needs Validation</Text>
@@ -138,8 +313,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         <View style={styles.phraseContainer}>
-          <Text style={styles.phrase}>{mockValidationClip.phrase}</Text>
-          <Text style={styles.pronunciation}>{mockValidationClip.pronunciation}</Text>
+          <Text style={styles.phrase}>{extractOriginalPrompt(clip?.phrase || '—')}</Text>
           {mockValidationClip.context && (
             <Text style={styles.context}>{mockValidationClip.context}</Text>
           )}
@@ -147,9 +321,9 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
 
         {renderWaveform(mockValidationClip.audioWaveform)}
 
-        <TouchableOpacity style={styles.playButton}>
+        <TouchableOpacity style={styles.playButton} onPress={handlePlay}>
           <Ionicons name="play" size={24} color="#FFFFFF" />
-          <Text style={styles.playButtonText}>Listen to pronunciation</Text>
+          <Text style={styles.playButtonText}>{audioLoading ? 'Loading...' : 'Listen to pronunciation'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -162,7 +336,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
 
         {!hasValidated ? (
           <View style={styles.validationButtons}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.validationButton, styles.correctButton]}
               onPress={() => handleValidation(true)}
             >
@@ -170,7 +344,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.validationButtonText}>Yes, Correct</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.validationButton, styles.incorrectButton]}
               onPress={() => handleValidation(false)}
             >
@@ -184,7 +358,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
               styles.resultCard,
               validationResult === 'correct' ? styles.correctResult : styles.incorrectResult
             ]}>
-              <Ionicons 
+              <Ionicons
                 name={validationResult === 'correct' ? "checkmark-circle" : "close-circle"}
                 size={32}
                 color={validationResult === 'correct' ? "#10B981" : "#EF4444"}
@@ -193,14 +367,14 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
                 {validationResult === 'correct' ? 'Marked as Correct!' : 'Marked as Needs Work'}
               </Text>
               <Text style={styles.resultDescription}>
-                {validationResult === 'correct' 
+                {validationResult === 'correct'
                   ? 'Your validation helps confirm accurate pronunciations.'
                   : 'Your feedback helps the community improve their pronunciation.'
                 }
               </Text>
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.nextButton}
               onPress={handleNext}
             >
@@ -217,6 +391,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.tipText}>• Focus on accuracy, not accent</Text>
         <Text style={styles.tipText}>• Be encouraging and constructive</Text>
       </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -225,6 +400,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+  },
+  scrollContent: {
+    paddingBottom: 24,
   },
   header: {
     flexDirection: 'row',

@@ -105,7 +105,30 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
   }, [replies, showReplies, loadReplies]);
 
   const handleNewComment = useCallback((newComment: Comment) => {
-    setComments(prev => [newComment, ...prev]);
+    console.log('Handling comment event:', newComment);
+
+    // Check if this is a deletion event
+    if ((newComment as any)._deleted) {
+      console.log('Removing deleted comment:', newComment.id);
+      setComments(prev => prev.filter(c => c.id !== newComment.id));
+      return;
+    }
+
+    // Check if this comment already exists (for updates)
+    setComments(prev => {
+      const existingIndex = prev.findIndex(c => c.id === newComment.id);
+      if (existingIndex >= 0) {
+        // Update existing comment
+        console.log('Updating existing comment:', newComment.id);
+        const updated = [...prev];
+        updated[existingIndex] = newComment;
+        return updated;
+      } else {
+        // Add new comment at the top
+        console.log('Adding new comment:', newComment.id);
+        return [newComment, ...prev];
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -117,7 +140,15 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
 
     const setupSubscription = async () => {
       try {
+        // Only set up subscription if user is authenticated
+        if (!authUser?.id) {
+          console.log('User not authenticated, skipping comment subscription');
+          return;
+        }
+
+        console.log('Setting up comment subscription for clip:', clipId, 'user:', authUser.id);
         unsubscribe = await subscribeToComments(clipId, handleNewComment);
+        console.log('Comment subscription set up successfully');
       } catch (error) {
         console.error('Error setting up comment subscription:', error);
       }
@@ -127,10 +158,11 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
 
     return () => {
       if (unsubscribe) {
+        console.log('Cleaning up comment subscription for clip:', clipId);
         unsubscribe();
       }
     };
-  }, [clipId, handleNewComment]);
+  }, [clipId, handleNewComment, authUser?.id]);
 
   useEffect(() => {
     setLoading(false);

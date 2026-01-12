@@ -3,7 +3,6 @@ import * as SecureStore from 'expo-secure-store';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../supabaseClient';
-import { createWelcomeNotification } from '../utils/notifications';
 
 type AuthContextValue = {
   session: import('@supabase/supabase-js').Session | null;
@@ -18,8 +17,15 @@ type AuthContextValue = {
       fullName: string;
       username: string;
       primaryLanguage: string;
+      inviteCode?: string;
+      country?: string;
+      state?: string;
+      city?: string;
+      lga?: string;
     }
   ) => Promise<null | string>;
+  resetPassword: (email: string) => Promise<null | string>;
+  updatePassword: (newPassword: string) => Promise<null | string>;
   signOut: () => Promise<void>;
 };
 
@@ -40,10 +46,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       console.log('Auth state changed:', event, newSession?.user?.email);
       setSession(newSession);
+      setLoading(false);
 
-      // Handle OAuth sign-in success
-      if (event === 'SIGNED_IN' && newSession?.user) {
+      // Handle OAuth sign-in success (only for OAuth, not email signup)
+      if (event === 'SIGNED_IN' && newSession?.user && newSession.user.app_metadata?.provider === 'google') {
         await handleOAuthSignIn(newSession.user);
+      }
+
+      // On any successful sign-in, ensure referral code exists and attribute invite if present
+      if (event === 'SIGNED_IN' && newSession?.user) {
+        try {
+          await ensureReferralSetup(newSession.user);
+          await syncLocationFromMetadata(newSession.user);
+        } catch (e) {
+          console.log('Post sign-in referral setup error:', e);
+        }
       }
     });
     return () => {
@@ -54,23 +71,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const user = session?.user ?? null;
 
   const signIn: AuthContextValue['signIn'] = async (email, password) => {
-    setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       return error ? error.message : null;
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
     }
   };
 
   const signInWithGoogle: AuthContextValue['signInWithGoogle'] = async () => {
     setLoading(true);
     try {
-      // Create redirect URI for OAuth - handle development vs production
-      const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'lingualink',
-        path: 'auth-callback',
-      });
+      // Create redirect URI for OAuth/email callbacks (Expo Go & dev builds)
+      // Route mapped in App.tsx as AuthCallback → 'auth-callback'
+      // Use web redirect for production, custom scheme for development
+      const redirectUri = __DEV__
+        ? AuthSession.makeRedirectUri({
+            scheme: 'lingualink',
+            path: 'auth-callback',
+          })
+        : 'https://lingualinknew.netlify.app';
 
       console.log('Google OAuth redirect URI:', redirectUri);
 
@@ -126,7 +146,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           if (code) {
-            console.log('Exchanging code for session...');
             const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
             if (exchangeError) {
@@ -185,6 +204,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             username: userMetadata?.username || userMetadata?.email?.split('@')[0] || '',
             avatar_url: userMetadata?.avatar_url || '',
             primary_language: userMetadata?.primary_language || 'English',
+            country: (userMetadata as any)?.country || null,
+            state: (userMetadata as any)?.state || null,
+            city: (userMetadata as any)?.city || null,
+            lga: (userMetadata as any)?.lga || null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
@@ -192,9 +215,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (insertError) {
           console.error('Error creating profile:', insertError);
         } else {
-          console.log('Profile created for OAuth user');
-          // Create welcome notification for new OAuth user
-          await createWelcomeNotification(user.id);
         }
       }
     } catch (error) {
@@ -202,9 +222,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage }) => {
+  const generateReferralCode = () => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // exclude easily confused chars
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return code;
+  };
+
+  const ensureReferralSetup = async (user: import('@supabase/supabase-js').User) => {
+    // 1) Ensure user has a referral code; if not, create one with retry on collision
+    const { data: existingCode } = await supabase
+      .from('referral_codes')
+      .select('id')
+      .eq('owner_user_id', user.id)
+      .maybeSingle();
+
+    if (!existingCode) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const code = generateReferralCode();
+        const { error: insertErr } = await supabase
+          .from('referral_codes')
+          .insert({ owner_user_id: user.id, code });
+        if (!insertErr) break;
+        // On unique violation, retry with a new code
+        if (attempt === 2) {
+          console.log('Failed to create unique referral code after retries:', insertErr?.message);
+        }
+      }
+    }
+
+    // 2) Attribute referral if invite code was provided in metadata and not yet attributed
+    const inviteCodeRaw = (user.user_metadata as any)?.invite_code_input as string | undefined;
+    if (inviteCodeRaw) {
+      const inviteCode = inviteCodeRaw.trim().toUpperCase();
+      if (inviteCode) {
+        // find inviter code case-insensitively
+        const { data: inviterCode } = await supabase
+          .from('referral_codes')
+          .select('id, owner_user_id, code')
+          .ilike('code', inviteCode)
+          .maybeSingle();
+
+        if (inviterCode && inviterCode.owner_user_id !== user.id) {
+          // Check if referral already exists to keep idempotent
+          const { data: existingReferral } = await supabase
+            .from('referrals')
+            .select('id')
+            .eq('referral_code_id', inviterCode.id)
+            .eq('referred_user_id', user.id)
+            .maybeSingle();
+
+          if (!existingReferral) {
+            await supabase
+              .from('referrals')
+              .insert({ referral_code_id: inviterCode.id, referred_user_id: user.id });
+          }
+        }
+
+        // Clear the metadata flag to avoid repeated processing (best-effort; ignore failure)
+        try {
+          await supabase.auth.updateUser({ data: { invite_code_input: null } });
+        } catch {}
+      }
+    }
+  };
+
+  const syncLocationFromMetadata = async (user: import('@supabase/supabase-js').User) => {
+    try {
+      const meta = user.user_metadata as any;
+      const hasAny = meta?.country || meta?.state || meta?.city || meta?.lga;
+      if (!hasAny) return;
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          country: meta.country || null,
+          state: meta.state || null,
+          city: meta.city || null,
+          lga: meta.lga || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+    } catch (e) {
+      console.log('syncLocationFromMetadata error', e);
+    }
+  };
+
+  const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage, inviteCode, country, state, city, lga }) => {
     setLoading(true);
     try {
+      // Check if email already exists
+      const { data: existingEmail, error: emailCheckErr } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+      if (emailCheckErr) return emailCheckErr.message;
+      if (existingEmail) return 'An account with this email already exists';
+
       // Ensure unique username
       const { data: existing, error: checkErr } = await supabase
         .from('profiles')
@@ -214,6 +330,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (checkErr) return checkErr.message;
       if (existing) return 'Username is already taken';
 
+      // Compute redirect for email confirmation links (works in Expo Go)
+      const emailRedirectTo = __DEV__
+        ? AuthSession.makeRedirectUri({
+            scheme: 'lingualink',
+            path: 'auth-callback',
+          })
+        : 'https://lingualinknew.netlify.app';
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -222,25 +346,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             full_name: fullName,
             username,
             primary_language: primaryLanguage,
+            // Persist invite code temporarily in metadata; backend will process on first sign-in
+            invite_code_input: inviteCode || null,
+            // Store location in metadata for now (not persisted to profiles yet)
+            country: country || null,
+            state: state || null,
+            city: city || null,
+            lga: lga || null,
           },
-          emailRedirectTo: 'lingualink://auth-callback',
+          emailRedirectTo,
         },
       });
       if (error) return error.message;
 
-      // If email confirmation is enabled, session may be null here. We will
-      // only attempt to update profile fields when we have a session.
-      const userId = data.user?.id;
-
-      // Create welcome notification for new user
-      if (userId) {
-        await createWelcomeNotification(userId);
-      }
-
-      // The trigger will attempt to populate profile from metadata.
+      // For email signup, we expect no session until email is confirmed
+      // Return success to show verification screen, but don't create session yet
       return null;
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      // Compute redirect for password reset links
+      const emailRedirectTo = __DEV__
+        ? AuthSession.makeRedirectUri({
+            scheme: 'lingualink',
+            path: 'auth-callback',
+          })
+        : 'https://lingualinknew.netlify.app';
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: emailRedirectTo,
+      });
+
+      if (error) {
+        return error.message;
+      }
+
+      return null; // Success
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) {
+        return error.message;
+      }
+
+      return null; // Success
+    } catch (error: any) {
+      return error?.message || 'An unexpected error occurred';
     }
   };
 
@@ -250,7 +413,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, signOut }),
+    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, resetPassword, updatePassword, signOut }),
     [session, user, loading]
   );
 
