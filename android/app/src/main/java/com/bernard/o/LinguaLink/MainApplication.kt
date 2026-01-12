@@ -1,4 +1,4 @@
-package com.bernard.o.LinguaLinkNewts
+package com.bernard.o.LinguaLink
 
 import android.app.Application
 import android.content.res.Configuration

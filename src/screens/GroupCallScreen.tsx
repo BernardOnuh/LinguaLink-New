@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App'; // Adjust path as needed
 
@@ -22,6 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'GroupCall'>;
 
 const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
   const { group } = route.params;
+  const insets = useSafeAreaInsets();
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
@@ -32,7 +34,7 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
     { id: '2', name: 'Sarah', avatar: '👩‍💻', isMuted: true, isVideoOff: false },
     { id: '3', name: 'Mike', avatar: '👨‍🎨', isMuted: false, isVideoOff: true },
   ]);
-  
+
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -65,8 +67,8 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
       'Are you sure you want to leave this group call?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Leave Call', 
+        {
+          text: 'Leave Call',
           style: 'destructive',
           onPress: () => navigation.goBack()
         }
@@ -104,7 +106,7 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.participantVideoText}>Video Feed</Text>
         </View>
       )}
-      
+
       <View style={styles.participantInfo}>
         <Text style={styles.participantName}>{participant.name}</Text>
         {participant.isMuted && (
@@ -119,18 +121,18 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      
+
       {/* Call Status Header */}
-      <View style={styles.statusHeader}>
+      <View style={[styles.statusHeader, { paddingTop: insets.top + 10 }]}>
         <View style={styles.statusInfo}>
           <Text style={styles.groupName}>{group.name}</Text>
           <Text style={styles.callStatus}>
-            {isConnected 
+            {isConnected
               ? `Group Call • ${formatDuration(callDuration)} • ${activeParticipants.length + 1} participants`
               : 'Connecting...'}
           </Text>
         </View>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.minimizeButton}
           onPress={() => {
             Alert.alert('Minimize', 'Group call minimized');
@@ -168,7 +170,7 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
 
           {/* Other participants */}
-          {activeParticipants.map((participant, index) => 
+          {activeParticipants.map((participant, index) =>
             renderParticipant(participant, index)
           )}
         </View>
@@ -185,55 +187,55 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
       </View>
 
       {/* Call Controls */}
-      <View style={styles.controlsContainer}>
+      <View style={[styles.controlsContainer, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.controlsRow}>
           {/* Mute Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.controlButton,
               isMuted && styles.activeControlButton
             ]}
             onPress={toggleMute}
           >
-            <Ionicons 
-              name={isMuted ? "mic-off" : "mic"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isMuted ? "mic-off" : "mic"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
           {/* Video Toggle Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.controlButton,
               isVideoOff && styles.activeControlButton
             ]}
             onPress={toggleVideo}
           >
-            <Ionicons 
-              name={isVideoOff ? "videocam-off" : "videocam"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isVideoOff ? "videocam-off" : "videocam"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
           {/* Speaker Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.controlButton,
               isSpeakerOn && styles.activeControlButton
             ]}
             onPress={toggleSpeaker}
           >
-            <Ionicons 
-              name={isSpeakerOn ? "volume-high" : "volume-low"} 
-              size={24} 
-              color="#FFFFFF" 
+            <Ionicons
+              name={isSpeakerOn ? "volume-high" : "volume-low"}
+              size={24}
+              color="#FFFFFF"
             />
           </TouchableOpacity>
 
           {/* Switch Camera Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.controlButton}
             onPress={switchCamera}
           >
@@ -241,7 +243,7 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
 
           {/* End Call Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlButton, styles.endCallButton]}
             onPress={endCall}
           >
@@ -255,12 +257,12 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
             <Ionicons name="chatbubble" size={20} color="#9CA3AF" />
             <Text style={styles.additionalButtonText}>Chat</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.additionalButton}>
             <Ionicons name="people-outline" size={20} color="#9CA3AF" />
             <Text style={styles.additionalButtonText}>Participants</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.additionalButton}>
             <Ionicons name="ellipsis-horizontal" size={20} color="#9CA3AF" />
             <Text style={styles.additionalButtonText}>More</Text>
@@ -281,7 +283,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingBottom: 10,
   },
   statusInfo: {
     flex: 1,
@@ -401,7 +403,6 @@ const styles = StyleSheet.create({
   },
   controlsContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
   },
   controlsRow: {
     flexDirection: 'row',

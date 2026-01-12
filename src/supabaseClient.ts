@@ -10,7 +10,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     storage: AsyncStorage,
-    detectSessionInUrl: false, // Disable for React Native
+    detectSessionInUrl: true, // Enable for deep linking
+    flowType: 'pkce', // Use PKCE flow for better security
   },
   global: {
     headers: {

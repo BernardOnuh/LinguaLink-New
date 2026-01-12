@@ -14,6 +14,7 @@ import {
   InteractionStats
 } from '../utils/interactions';
 import { useAuth } from '../context/AuthProvider';
+import { supabase } from '../supabaseClient';
 
 interface VoiceClipInteractionsProps {
   clipId: string;
@@ -46,6 +47,48 @@ export const VoiceClipInteractions: React.FC<VoiceClipInteractionsProps> = ({
     loadStats();
   }, [clipId]);
 
+  // Realtime: refresh on voice clip or likes changes
+  useEffect(() => {
+    const channel = supabase
+      .channel(`voice-clip-interactions-${clipId}`)
+      // Voice clip counters updated
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'voice_clips',
+        filter: `id=eq.${clipId}`,
+      }, async () => {
+        await loadStats();
+      })
+      // Likes created/deleted for this clip (we filter in handler)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'likes',
+      }, async (payload: any) => {
+        const target = payload.new || payload.old;
+        if (target && target.target_type === 'voice_clip' && target.target_id === clipId) {
+          await loadStats();
+        }
+      })
+      // Comments created for this clip (refresh counts)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'comments',
+      }, async (payload: any) => {
+        const row = payload.new;
+        if (row && row.voice_clip_id === clipId) {
+          await loadStats();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [clipId]);
+
   const handleLike = async () => {
     if (!authUser) {
       Alert.alert('Error', 'Please sign in to like voice clips');
@@ -56,7 +99,7 @@ export const VoiceClipInteractions: React.FC<VoiceClipInteractionsProps> = ({
     try {
       const success = await toggleVoiceClipLike(clipId);
       if (success) {
-        // Update local stats
+        // Optimistic toggle; realtime/refresh will reconcile
         setStats(prev => {
           if (!prev) return prev;
           return {

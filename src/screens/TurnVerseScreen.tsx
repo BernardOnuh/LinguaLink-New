@@ -15,6 +15,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -76,6 +77,36 @@ const mockLiveRooms: LiveRoom[] = [
         score: 200,
         status: 'active',
       },
+      {
+        id: 'player_3',
+        name: 'Fatima',
+        avatar: '👩🏾‍💼',
+        language: 'Hausa',
+        isHost: false,
+        isOnStage: true,
+        score: 120,
+        status: 'active',
+      },
+      {
+        id: 'player_4',
+        name: 'Chidi',
+        avatar: '👨🏾',
+        language: 'Igbo',
+        isHost: false,
+        isOnStage: true,
+        score: 180,
+        status: 'active',
+      },
+      {
+        id: 'player_5',
+        name: 'Bola',
+        avatar: '👩🏾‍🎓',
+        language: 'Yoruba',
+        isHost: false,
+        isOnStage: true,
+        score: 90,
+        status: 'active',
+      },
     ],
     viewers: 234,
     category: 'Foods',
@@ -96,7 +127,18 @@ const mockLiveRooms: LiveRoom[] = [
       score: 0,
       status: 'active',
     },
-    currentPlayers: [],
+    currentPlayers: [
+      {
+        id: 'player_6',
+        name: 'Tunde',
+        avatar: '👨🏾‍🎓',
+        language: 'Yoruba',
+        isHost: false,
+        isOnStage: true,
+        score: 0,
+        status: 'active',
+      },
+    ],
     viewers: 89,
     category: 'Animals',
     language: 'Yoruba',
@@ -106,6 +148,7 @@ const mockLiveRooms: LiveRoom[] = [
 ];
 
 const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'Live' | 'Create' | 'Trending'>('Live');
   const [selectedRoom, setSelectedRoom] = useState<LiveRoom | null>(null);
   const [isInGame, setIsInGame] = useState(false);
@@ -114,7 +157,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
   const [gameWord, setGameWord] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
-  
+
   // Animation values
   const timerAnim = useRef(new Animated.Value(1)).current;
   const stageAnim = useRef(new Animated.Value(0)).current;
@@ -123,7 +166,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
     if (gameStarted && gameTimer > 0) {
       const timer = setTimeout(() => {
         setGameTimer(gameTimer - 1);
-        
+
         // Animate timer
         Animated.sequence([
           Animated.timing(timerAnim, {
@@ -172,7 +215,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
   const joinRoom = (room: LiveRoom) => {
     setSelectedRoom(room);
     setIsInGame(true);
-    
+
     // Animate stage entry
     Animated.timing(stageAnim, {
       toValue: 1,
@@ -186,7 +229,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
     setSelectedRoom(null);
     setGameStarted(false);
     setGameTimer(10);
-    
+
     Animated.timing(stageAnim, {
       toValue: 0,
       duration: 300,
@@ -207,13 +250,13 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
       onRequestClose={() => setShowCreateModal(false)}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalBackground}
           onPress={() => setShowCreateModal(false)}
         />
         <View style={styles.createModalContent}>
           <Text style={styles.createModalTitle}>Create TurnVerse Game</Text>
-          
+
           <View style={styles.createForm}>
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>Game Category</Text>
@@ -238,7 +281,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
             </View>
 
             <View style={styles.formActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.createButton}
                 onPress={() => {
                   setShowCreateModal(false);
@@ -255,7 +298,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
   );
 
   const renderLiveRoom = ({ item }: { item: LiveRoom }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.liveRoomCard}
       onPress={() => joinRoom(item)}
     >
@@ -302,9 +345,9 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
       >
         <SafeAreaView style={styles.gameContainer}>
           <StatusBar barStyle="light-content" backgroundColor="#1F2937" />
-          
+
           {/* Game Header */}
-          <View style={styles.gameHeader}>
+          <View style={[styles.gameHeader, { paddingTop: insets.top + 12 }]}>
             <TouchableOpacity onPress={leaveRoom}>
               <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -329,7 +372,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
               <View style={styles.gamePrompt}>
                 <Text style={styles.promptLabel}>Say this in your language:</Text>
                 <Text style={styles.promptWord}>{gameWord}</Text>
-                
+
                 <Animated.View style={[
                   styles.timerContainer,
                   { transform: [{ scale: timerAnim }] }
@@ -344,10 +387,11 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
               </View>
             )}
 
-            {/* Players on Stage */}
+            {/* Players on Stage - 6 participants (3x2 grid) */}
             <View style={styles.stageArea}>
               <Text style={styles.stageLabel}>On Stage</Text>
-              <View style={styles.playersRow}>
+              <View style={styles.playersGrid}>
+                {/* Host (always in top-left) */}
                 <View style={[
                   styles.playerSpot,
                   selectedRoom.host.isOnStage && styles.activePlayer,
@@ -363,8 +407,9 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
                   )}
                 </View>
 
+                {/* Current players */}
                 {selectedRoom.currentPlayers.map((player, index) => (
-                  <View 
+                  <View
                     key={player.id}
                     style={[
                       styles.playerSpot,
@@ -379,13 +424,13 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
                   </View>
                 ))}
 
-                {/* Empty spots */}
-                {Array.from({ length: Math.max(0, 4 - selectedRoom.currentPlayers.length - 1) }).map((_, index) => (
-                  <TouchableOpacity 
+                {/* Empty spots for remaining slots (up to 5 more players) */}
+                {Array.from({ length: Math.max(0, 6 - selectedRoom.currentPlayers.length - 1) }).map((_, index) => (
+                  <TouchableOpacity
                     key={`empty_${index}`}
                     style={styles.emptySpot}
                   >
-                    <Ionicons name="add" size={24} color="#9CA3AF" />
+                    <Ionicons name="add" size={20} color="#9CA3AF" />
                     <Text style={styles.emptySpotText}>Join Stage</Text>
                   </TouchableOpacity>
                 ))}
@@ -396,7 +441,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
           {/* Game Controls */}
           <View style={styles.gameControls}>
             {!gameStarted ? (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.startGameButton}
                 onPress={startGame}
               >
@@ -440,9 +485,9 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1F2937" />
-      
+
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -508,7 +553,7 @@ const TurnVerseScreen: React.FC<any> = ({ navigation }) => {
       </View>
 
       {/* Floating Create Button */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.createFloatingButton}
         onPress={() => setShowCreateModal(true)}
       >
@@ -531,7 +576,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: width * 0.05,
-    paddingVertical: 16,
+    paddingBottom: 16,
     backgroundColor: '#1F2937',
   },
   headerTitle: {
@@ -820,7 +865,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     backgroundColor: '#374151',
   },
   gameInfo: {
@@ -885,19 +930,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  playersRow: {
+  playersGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
   },
   playerSpot: {
     backgroundColor: '#374151',
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
-    width: (width - 64) / 2,
+    width: (width - 80) / 3, // 3 columns instead of 2
     marginBottom: 12,
     position: 'relative',
+    minHeight: 100,
   },
   activePlayer: {
     backgroundColor: '#4B5563',
@@ -945,13 +992,15 @@ const styles = StyleSheet.create({
   emptySpot: {
     backgroundColor: '#374151',
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
-    width: (width - 64) / 2,
+    width: (width - 80) / 3, // Match playerSpot width
     marginBottom: 12,
     borderWidth: 2,
     borderColor: '#4B5563',
     borderStyle: 'dashed',
+    minHeight: 100,
+    justifyContent: 'center',
   },
   emptySpotText: {
     fontSize: 12,

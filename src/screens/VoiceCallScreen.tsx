@@ -12,6 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -47,6 +48,7 @@ interface TranslationBubble {
 }
 
 const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { contact } = route.params;
   const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'ended'>('connecting');
   const [callDuration, setCallDuration] = useState(0);
@@ -55,7 +57,7 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isListening, setIsListening] = useState(false);
   const [translations, setTranslations] = useState<TranslationBubble[]>([]);
   const [showTranslations, setShowTranslations] = useState(true);
-  
+
   // Animation values
   const pulseAnim = new Animated.Value(1);
   const translateAnim = new Animated.Value(0);
@@ -135,16 +137,16 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
           ...mockTranslations[index],
           timestamp: formatTime(callDuration + index * 15),
         };
-        
+
         setTranslations(prev => [...prev, newTranslation]);
-        
+
         // Animate translation bubble appearing
         Animated.timing(translateAnim, {
           toValue: 1,
           duration: 300,
           useNativeDriver: true,
         }).start();
-        
+
         index++;
       } else {
         clearInterval(translationTimer);
@@ -188,7 +190,7 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const renderTranslationBubble = (translation: TranslationBubble) => {
     const isMe = translation.speaker === 'me';
-    
+
     return (
       <Animated.View
         key={translation.id}
@@ -215,14 +217,14 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
           </Text>
           <Text style={styles.translationTime}>{translation.timestamp}</Text>
         </View>
-        
+
         <Text style={[
           styles.originalText,
           isMe ? styles.myOriginalText : styles.theirOriginalText
         ]}>
           "{translation.originalText}"
         </Text>
-        
+
         <Text style={[
           styles.translatedText,
           isMe ? styles.myTranslatedText : styles.theirTranslatedText
@@ -236,18 +238,18 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1F2937" />
-      
+
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>LinguaCall</Text>
         <TouchableOpacity onPress={toggleTranslations}>
-          <Ionicons 
-            name={showTranslations ? "eye" : "eye-off"} 
-            size={24} 
-            color="#FFFFFF" 
+          <Ionicons
+            name={showTranslations ? "eye" : "eye-off"}
+            size={24}
+            color="#FFFFFF"
           />
         </TouchableOpacity>
       </View>
@@ -259,7 +261,7 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
           {callStatus === 'connected' && `Connected • ${formatTime(callDuration)}`}
           {callStatus === 'ended' && 'Call Ended'}
         </Text>
-        
+
         <View style={styles.languageInfo}>
           <Text style={styles.languageInfoText}>
             Real-time translation: Your language ↔ {contact.language}
@@ -269,7 +271,7 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
 
       {/* Contact Info */}
       <View style={styles.contactContainer}>
-        <Animated.View 
+        <Animated.View
           style={[
             styles.contactAvatar,
             {
@@ -284,10 +286,10 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           )}
         </Animated.View>
-        
+
         <Text style={styles.contactName}>{contact.name}</Text>
         <Text style={styles.contactLanguage}>Speaking {contact.language}</Text>
-        
+
         {isListening && (
           <View style={styles.listeningIndicator}>
             <Ionicons name="pulse" size={20} color="#10B981" />
@@ -308,25 +310,25 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
 
       {/* Call Controls */}
       <View style={styles.controlsContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.controlButton, isMuted && styles.activeControlButton]}
           onPress={toggleMute}
         >
-          <Ionicons 
-            name={isMuted ? "mic-off" : "mic"} 
-            size={24} 
-            color={isMuted ? "#EF4444" : "#FFFFFF"} 
+          <Ionicons
+            name={isMuted ? "mic-off" : "mic"}
+            size={24}
+            color={isMuted ? "#EF4444" : "#FFFFFF"}
           />
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.controlButton, isSpeakerOn && styles.activeControlButton]}
           onPress={toggleSpeaker}
         >
-          <Ionicons 
-            name={isSpeakerOn ? "volume-high" : "volume-low"} 
-            size={24} 
-            color="#FFFFFF" 
+          <Ionicons
+            name={isSpeakerOn ? "volume-high" : "volume-low"}
+            size={24}
+            color="#FFFFFF"
           />
         </TouchableOpacity>
 
@@ -364,7 +366,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: width * 0.05,
-    paddingTop: height * 0.02,
     paddingBottom: 16,
   },
   headerTitle: {
