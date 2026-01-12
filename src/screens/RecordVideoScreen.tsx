@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as DocumentPicker from 'expo-document-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
@@ -97,10 +98,30 @@ const RecordVideoScreen: React.FC<Props> = ({ navigation }) => {
     setIsSaving(true);
     setUploadProgress('Uploading video...');
     try {
+      // Upload video file
       const upload = await uploadVideoFile(videoUri, user!.id);
       if (!upload.success || !upload.url) {
         throw new Error(upload.error || 'Upload failed');
       }
+
+      // Generate thumbnail
+      setUploadProgress('Generating thumbnail...');
+      let thumbnailUrl = null;
+      try {
+        const { uri: thumbnailUri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
+          time: 1000, // Get thumbnail at 1 second
+        });
+
+        // Upload thumbnail
+        const thumbnailUpload = await uploadVideoFile(thumbnailUri, user!.id, undefined, 'image/jpeg');
+        if (thumbnailUpload.success && thumbnailUpload.url) {
+          thumbnailUrl = thumbnailUpload.url;
+        }
+      } catch (thumbError) {
+        console.error('Thumbnail generation error:', thumbError);
+        // Continue without thumbnail if it fails
+      }
+
       setUploadProgress('Saving to database...');
 
       const { error } = await supabase
@@ -109,7 +130,7 @@ const RecordVideoScreen: React.FC<Props> = ({ navigation }) => {
           phrase: finalPrompt,
           translation: '',
           video_url: upload.url,
-          thumbnail_url: null,
+          thumbnail_url: thumbnailUrl,
           language: selectedLanguage.name,
           dialect: selectedLanguage.dialect || null,
           duration: null,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,9 +20,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
-import { getPlayableAudioUrl } from '../utils/storage';
+import { getPlayableAudioUrl, getPlayableVideoUrl } from '../utils/storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import VideoPlayerModal from '../components/VideoPlayerModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -130,6 +131,7 @@ interface Post {
     audioWaveform?: number[];
     audioUrl?: string;
     videoThumbnail?: string;
+    videoUrl?: string;
     storyTitle?: string;
     duration?: string;
   };
@@ -180,6 +182,9 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
+  const [isLoadingVideo, setIsLoadingVideo] = useState<string | null>(null);
   const { user } = useAuth();
 
   // Fetch live streams from database
@@ -343,7 +348,8 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           content: {
             phrase: clip.phrase || 'Video clip',
             translation: clip.translation || '',
-            videoThumbnail: '🎬',
+            videoThumbnail: clip.thumbnail_url || '🎬',
+            videoUrl: clip.video_url,
             duration: clip.duration ? `${Math.floor(clip.duration / 60)}:${(clip.duration % 60).toString().padStart(2, '0')}` : '0:00',
           },
           engagement: {
@@ -808,6 +814,35 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
+  const handleVideoPlay = async (postId: string, videoUrl?: string) => {
+    if (!videoUrl) {
+      Alert.alert('No Video', 'This post does not have a video file');
+      return;
+    }
+
+    try {
+      setIsLoadingVideo(postId);
+      const resolvedUrl = await getPlayableVideoUrl(videoUrl);
+      if (!resolvedUrl) {
+        setIsLoadingVideo(null);
+        Alert.alert('Error', 'Failed to load video file');
+        return;
+      }
+      setCurrentVideoUrl(resolvedUrl);
+      setShowVideoPlayer(true);
+    } catch (error) {
+      console.error('Error loading video:', error);
+      Alert.alert('Error', 'Failed to play video file');
+    } finally {
+      setIsLoadingVideo(null);
+    }
+  };
+
+  const handleCloseVideoPlayer = () => {
+    setShowVideoPlayer(false);
+    setCurrentVideoUrl(null);
+  };
+
   const handleFollow = async (userId: string) => {
     if (!user) {
       Alert.alert('Error', 'Please sign in to follow users');
@@ -1195,6 +1230,7 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
     </Modal>
   );
 
+
   const renderWaveform = (waveform: number[]) => (
     <View style={styles.waveformContainer}>
       {waveform.map((height, index) => (
@@ -1324,9 +1360,26 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         {post.type === 'video' && (
           <View style={styles.videoContainer}>
             <View style={styles.videoThumbnail}>
-              <Text style={styles.videoThumbnailText}>{post.content.videoThumbnail}</Text>
-              <TouchableOpacity style={styles.videoPlayButton}>
-                <Ionicons name="play" size={32} color="#FFFFFF" />
+              {post.content.videoThumbnail && /^https?:\/\//i.test(post.content.videoThumbnail) ? (
+                <Image
+                  source={{ uri: post.content.videoThumbnail }}
+                  style={styles.videoThumbnailImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.videoThumbnailPlaceholder}>
+                  <Text style={styles.videoThumbnailText}>{post.content.videoThumbnail || '🎬'}</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.videoPlayButton}
+                onPress={() => handleVideoPlay(post.id, (post.content as any).videoUrl)}
+              >
+                {isLoadingVideo === post.id ? (
+                  <ActivityIndicator size="large" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="play" size={32} color="#FFFFFF" />
+                )}
               </TouchableOpacity>
               <View style={styles.videoDuration}>
                 <Text style={styles.videoDurationText}>{post.content.duration}</Text>
@@ -1619,6 +1672,11 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
       </TouchableOpacity>
 
       <CreatePostModal />
+      <VideoPlayerModal
+        visible={showVideoPlayer}
+        videoUrl={currentVideoUrl}
+        onClose={handleCloseVideoPlayer}
+      />
     </SafeAreaView>
   );
 };
@@ -2118,6 +2176,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     marginBottom: 12,
+    overflow: 'hidden',
+  },
+  videoThumbnailImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  videoThumbnailPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#E5E7EB',
   },
   videoThumbnailText: {
     fontSize: 60,
